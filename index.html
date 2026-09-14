@@ -25,8 +25,8 @@
   html,body{margin:0;padding:0;}
   body{
     background:
-      radial-gradient(circle at 15% 8%, var(--glow-1), transparent 40%),
-      radial-gradient(circle at 85% 92%, var(--glow-2), transparent 45%),
+      radial-gradient(circle at 15% 8%, var(--glow-1), transparent 60%),
+      radial-gradient(circle at 85% 92%, var(--glow-2), transparent 65%),
       var(--bg);
     color:var(--text);
     font-family:'Inter', sans-serif;
@@ -183,6 +183,17 @@
   }
 
   .note{font-size:0.78rem;color:var(--text-muted); text-align:center; margin-top:10px;}
+
+  .version-badge{
+    position:fixed;
+    bottom:10px;
+    right:14px;
+    font-size:0.7rem;
+    color:var(--text-muted);
+    opacity:0.55;
+    pointer-events:none;
+    z-index:10;
+  }
 </style>
 </head>
 <body>
@@ -309,25 +320,150 @@ function hexToRgbString(hex){
   const b = parseInt(hex.substr(4,2),16);
   return `${r},${g},${b}`;
 }
+// The real, official Game Freak classification (introduced Ruby/Sapphire as the
+// Pokédex's "body color" search filter, still present as internal data today) — exactly
+// 10 categories, no Orange (warm-orange species like Charizard are filed under Red).
+// Representative hex per category, chosen to each carry a genuine hue (including White/
+// Black/Gray, given a slight tint here) so accentFromType's saturation floor has
+// something real to work with rather than forcing a random hue onto true neutral gray.
+const POKEDEX_COLOR_HEX = {
+  Red:'#E63946', Blue:'#457B9D', Yellow:'#F4C430', Green:'#57A639',
+  Black:'#4A3F5C', Brown:'#8B5E3C', Purple:'#9B5DE5', Gray:'#8891A8',
+  White:'#D8D0E8', Pink:'#F27CA5'
+};
+// Official color category per avatar in the pool — sourced from knowledge of each
+// species' design, not fetched/verified line-by-line the way CHINESE_NEW_YEAR was.
+// Flag anything that looks wrong; easy to correct individually.
+const POKEMON_COLOR = {
+  Abomasnow:'White', Absol:'White', Accelgor:'Purple', Aegislash:'Gray', Aerodactyl:'Purple',
+  Aggron:'Gray', Alakazam:'Yellow', Alcremie:'White', Alomomola:'Pink', Altaria:'Blue',
+  Ambipom:'Purple', Amoonguss:'Red', Ampharos:'Yellow', Annihilape:'Gray', Appletun:'Green',
+  Araquanid:'Blue', Arbok:'Purple', Arboliva:'Green', Arcanine:'Brown', 'Arcanine-Hisui':'White',
+  Archaludon:'Blue', Archeops:'Brown', Arctovish:'Blue', Arctozolt:'Yellow', Ariados:'Red',
+  Armaldo:'Red', Armarouge:'Red', Audino:'Pink', Aurorus:'Blue', Avalugg:'White',
+  'Avalugg-Hisui':'Brown', Azumarill:'Blue', Banette:'Purple', Barbaracle:'Blue', Barraskewda:'Blue',
+  Basculegion:'Gray', Basculin:'Red', Bastiodon:'Gray', Baxcalibur:'Blue', Beartic:'White',
+  Beautifly:'Purple', Beedrill:'Yellow', Beheeyem:'Yellow', Bellibolt:'Yellow', Bellossom:'Green',
+  Bewear:'Pink', Bibarel:'Brown', Bisharp:'Gray', Blastoise:'Blue', Blaziken:'Red',
+  Blissey:'Pink', Boltund:'Yellow', Bombirdier:'Gray', Bouffalant:'Brown', Brambleghast:'Brown',
+  Braviary:'Red', 'Braviary-Hisui':'Blue', Breloom:'Brown', Bronzong:'Blue', Bruxish:'Pink',
+  Butterfree:'Purple', Cacturne:'Green', Camerupt:'Red', Carbink:'Blue', Carnivine:'Green',
+  Carracosta:'Blue', Castform:'White', Centiskorch:'Red', Ceruledge:'Blue', Cetitan:'White',
+  Chandelure:'Purple', Chansey:'Pink', Charizard:'Red', Chatot:'Green', Cherrim:'Pink',
+  Chesnaught:'Green', Chimecho:'Blue', Cinderace:'White', Clawitzer:'Blue', Claydol:'Brown', Clefable:'Pink',
+  Clodsire:'Pink', Cloyster:'Purple', Coalossal:'Gray', Cofagrigus:'Yellow', Comfey:'Pink',
+  Copperajah:'Brown', Corsola:'Pink', Corviknight:'Black', Crabominable:'White', Cradily:'Purple',
+  Cramorant:'Gray', Crawdaunt:'Red', Crobat:'Purple', Crustle:'Brown', Cryogonal:'Blue',
+  Cursola:'Pink', Cyclizar:'Green', Dachsbun:'Brown', Darmanitan:'Red', 'Darmanitan-Galar':'White',
+  Decidueye:'Brown', 'Decidueye-Hisui':'Green', Dedenne:'Yellow', Delcatty:'White', Delibird:'White',
+  Delphox:'Yellow', Dewgong:'White', Dhelmise:'Green', Diggersby:'Brown', Ditto:'Purple',
+  Dodrio:'Brown', Dondozo:'Blue', Donphan:'Gray', Dracovish:'Blue', Dracozolt:'Yellow',
+  Dragalge:'Purple', Dragapult:'Purple', Dragonite:'Brown', Drampa:'White', Drapion:'Purple',
+  Drednaw:'Blue', Drifblim:'Purple', Druddigon:'Red', Dubwool:'White', Dudunsparce:'Brown',
+  Dugtrio:'Brown', 'Dugtrio-Alola':'Yellow', Durant:'Black', Dusknoir:'Gray', Dustox:'Purple',
+  Eelektross:'Yellow', Eiscue:'Blue', Eldegoss:'White', Electivire:'Yellow', Electrode:'Red',
+  'Electrode-Hisui':'Blue', Emboar:'Red', Emolga:'Black', Empoleon:'Blue', Escavalier:'Blue',
+  Espathra:'White', Espeon:'Purple', Excadrill:'Gray', Exeggutor:'Yellow', 'Exeggutor-Alola':'Brown',
+  Exploud:'Gray', Falinks:'Yellow', 'Farfetch’d':'Brown', Farigiraf:'Yellow', Fearow:'Brown',
+  Feraligatr:'Blue', Ferrothorn:'Green', Flamigo:'Pink', Flapple:'Red', Flareon:'Red',
+  Floatzel:'Yellow', Florges:'Pink', Flygon:'Green', Forretress:'Blue', Froslass:'White',
+  Frosmoth:'White', Furfrou:'White', Furret:'Brown', Gallade:'White', Galvantula:'Yellow',
+  Garbodor:'Purple', Garchomp:'Blue', Gardevoir:'White', Garganacl:'Gray', Gastrodon:'Pink',
+  Gengar:'Purple', Gholdengo:'Yellow', Gigalith:'Gray', Glaceon:'Blue', Glalie:'Blue',
+  Glimmora:'Pink', Gliscor:'Purple', Gogoat:'Brown', Golduck:'Blue', Golem:'Gray',
+  'Golem-Alola':'Brown', Golisopod:'Yellow', Golurk:'Gray', Goodra:'Purple', 'Goodra-Hisui':'Blue',
+  Gorebyss:'Pink', Gothitelle:'Black', Gourgeist:'Brown', Grafaiai:'Purple', Granbull:'Blue',
+  Grapploct:'Purple', Greninja:'Blue', Grimmsnarl:'Purple', Grumpig:'Pink', Gyarados:'Blue',
+  Hariyama:'Yellow', Hatterene:'White', Hawlucha:'Red', Haxorus:'Gray', Heatmor:'Red',
+  Heliolisk:'Yellow', Heracross:'Blue', Hippowdon:'Yellow', Hitmonchan:'Brown', Hitmonlee:'Brown',
+  Hitmontop:'Gray', Honchkrow:'Black', Houndoom:'Black', Houndstone:'White', Huntail:'Blue',
+  Hydrapple:'Green', Hydreigon:'Blue', Hypno:'Yellow', Illumise:'Purple', Incineroar:'Red',
+  Indeedee:'White', Infernape:'Red', Inteleon:'Blue', Jellicent:'Blue', Jolteon:'Yellow',
+  Jumpluff:'Blue', Jynx:'Purple', Kabutops:'Brown', Kangaskhan:'Brown', Kecleon:'Green',
+  Kilowattrel:'Yellow', Kingambit:'Gray', Kingdra:'Blue', Kingler:'Red', Klawf:'Red',
+  Kleavor:'Blue', Klefki:'Gray', Klinklang:'Gray', Komala:'Gray', 'Kommo-o':'Green',
+  Kricketune:'Brown', Krookodile:'Brown', Lanturn:'Blue', Lapras:'Blue', Leafeon:'Green',
+  Leavanny:'Green', Ledian:'Red', Lickilicky:'Pink', Liepard:'Purple', Lilligant:'White',
+  'Lilligant-Hisui':'Red', Lokix:'Black', Lopunny:'Brown', Lucario:'Blue', Ludicolo:'Green',
+  Lumineon:'Blue', Lunatone:'Gray', Lurantis:'Pink', Luvdisc:'Pink', Luxray:'Black',
+  Lycanroc:'Brown', Mabosstiff:'Black', Machamp:'Gray', Magcargo:'Red', Magmortar:'Red',
+  Magnezone:'Gray', Malamar:'Purple', Mamoswine:'Brown', Mandibuzz:'Brown', Manectric:'Blue',
+  Mantine:'Blue', Maractus:'Green', Marowak:'Brown', 'Marowak-Alola':'Black', Masquerain:'Purple',
+  Maushold:'Brown', Mawile:'Yellow', Medicham:'Gray', Meganium:'Green', Melmetal:'Gray',
+  Meowscarada:'Green', Meowstic:'White', Metagross:'Blue', Mienshao:'White', Mightyena:'Gray',
+  Milotic:'Blue', Miltank:'Pink', Mimikyu:'Black', Minior:'Red', Minun:'Blue',
+  Mismagius:'Purple', Morpeko:'Yellow', Mothim:'Brown', 'Mr. Mime':'Pink', 'Mr. Rime':'Black',
+  Mudsdale:'Brown', Muk:'Purple', 'Muk-Alola':'Purple', Musharna:'Pink', Nidoking:'Purple',
+  Nidoqueen:'Blue', Ninetales:'White', 'Ninetales-Alola':'White', Ninjask:'Yellow', Noctowl:'Brown',
+  Noivern:'Purple', Nosepass:'Blue', Obstagoon:'Black', Octillery:'Red', Omastar:'Blue',
+  Oranguru:'Brown', Orbeetle:'Blue', Oricorio:'Red', Orthworm:'Gray', Overqwil:'Purple',
+  Pachirisu:'White', Palafin:'Blue', Palossand:'Yellow', Pangoro:'Black', Parasect:'Red',
+  Passimian:'Brown', Pawmot:'Yellow', Pelipper:'Blue', Perrserker:'Gray', Persian:'White',
+  'Persian-Alola':'Purple', Pidgeot:'Brown', Pincurchin:'Yellow', Pinsir:'Brown', Plusle:'Red',
+  Poliwrath:'Blue', Politoed:'Green', Polteageist:'Purple', 'Porygon-Z':'Pink', Primarina:'Blue',
+  Probopass:'Gray', Purugly:'Gray', Pyroar:'Yellow', Pyukumuku:'Brown', Quagsire:'Blue',
+  Quaquaval:'Blue', Rabsca:'Yellow', Raichu:'Yellow', 'Raichu-Alola':'Pink', Rampardos:'Gray',
+  Rapidash:'White', 'Rapidash-Galar':'White', Raticate:'Purple', Relicanth:'Blue', Reuniclus:'White',
+  Revavroom:'Purple', Rhyperior:'Gray', Ribombee:'Yellow', Rillaboom:'Brown', Roserade:'Green',
+  Rotom:'Red', Runerigus:'Gray', Sableye:'Purple', Salamence:'Blue', Salazzle:'Purple',
+  Samurott:'Blue', 'Samurott-Hisui':'White', Sandaconda:'Yellow', Sandslash:'Yellow', 'Sandslash-Alola':'White',
+  Sawk:'Yellow', Sawsbuck:'Brown', Sceptile:'Green', Scizor:'Red', Scolipede:'Purple',
+  Scovillain:'Red', Scrafty:'Yellow', Seaking:'Red', Seismitoad:'Blue', Serperior:'Green',
+  Seviper:'Black', Sharpedo:'Blue', Shedinja:'Brown', Shiftry:'Brown', Shiinotic:'Purple',
+  Shuckle:'Yellow', Sigilyph:'Blue', Silvally:'Gray', Simipour:'Blue', Simisage:'Green',
+  Simisear:'Red', Sinistcha:'Green', 'Sirfetch’d':'Brown', Skarmory:'Gray', Skeledirge:'Red',
+  Skuntank:'Purple', Slaking:'Brown', Slowbro:'Pink', 'Slowbro-Galar':'Pink', Slowking:'Pink',
+  'Slowking-Galar':'Yellow', Smeargle:'White', Sneasler:'Purple', Snorlax:'Blue', Solrock:'Red',
+  Spidops:'Purple', Spinda:'White', Spiritomb:'Purple', Squawkabilly:'Green', Staraptor:'Brown',
+  Starmie:'Purple', Steelix:'Gray', Stonjourner:'Gray', Stoutland:'Brown', Stunfisk:'Yellow',
+  'Stunfisk-Galar':'Brown', Sudowoodo:'Brown', Sunflora:'Yellow', Swalot:'Purple', Swampert:'Blue',
+  Swanna:'White', Swellow:'Red', Swoobat:'Purple', Sylveon:'Pink', Talonflame:'Red',
+  Tangela:'Blue', Tangrowth:'Blue', Tatsugiri:'Blue', Tauros:'Brown', 'Tauros-Paldea-Aqua':'Blue',
+  'Tauros-Paldea-Blaze':'Red', 'Tauros-Paldea-Combat':'Brown', Tentacruel:'Blue', Thievul:'Brown', Throh:'Blue',
+  Tinkaton:'Pink', Toedscruel:'Purple', Togedemaru:'Yellow', Togekiss:'White', Torkoal:'Black',
+  Torterra:'Green', Toucannon:'Red', Toxapex:'Purple', Toxicroak:'Purple', Toxtricity:'Purple',
+  Trevenant:'Brown', Tropius:'Green', Tsareena:'Pink', Turtonator:'Blue', Typhlosion:'Blue',
+  'Typhlosion-Hisui':'Purple', Tyranitar:'Green', Tyrantrum:'Brown', Umbreon:'Black', Unfezant:'Purple',
+  Unown:'Black', Ursaluna:'Brown', Ursaring:'Brown', Urshifu:'Black', Vanilluxe:'White',
+  Vaporeon:'Blue', Veluza:'Blue', Venomoth:'Purple', Venusaur:'Green', Vespiquen:'Yellow',
+  Victreebel:'Green', Vikavolt:'Yellow', Vileplume:'Red', Vivillon:'White', Volbeat:'Black',
+  Volcarona:'White', Wailord:'Blue', Walrein:'Blue', Weavile:'Black', Weezing:'Purple',
+  'Weezing-Galar':'Pink', Whimsicott:'White', Whiscash:'Brown', Wigglytuff:'Pink', Wishiwashi:'Blue',
+  Wobbuffet:'Blue', Wormadam:'Green', 'Wormadam-Trash':'Gray', Wugtrio:'Blue', Wyrdeer:'Brown',
+  Xatu:'Green', Yanmega:'Green', Zangoose:'White', Zebstrika:'Black', Zoroark:'Red',
+  'Zoroark-Hisui':'White'
+};
+// Safe lookup for an avatar's official-color hex — falls back to Gray (a neutral,
+// always-legible default) if a name is ever missing, rather than throwing.
+function colorForAvatar(avatar){
+  const category = POKEMON_COLOR[avatar.name];
+  return POKEDEX_COLOR_HEX[category] || POKEDEX_COLOR_HEX.Gray;
+}
 // Retheme the page's accent color, background glows, and card borders/tint around the
-// Sun sign's typing — the one placement that's always present and always the
-// "headline" sign. Two-typed signs get a two-tone theme (first type drives the accent/
-// button/text/card-border color, second drives the second background glow); single/
-// triple-typed signs reuse the first type for both. The accent itself goes through
-// accentFromType for legibility; the glows and card tint don't need that treatment
-// since they're low-opacity washes, not text.
-function applySignTheme(sunSign){
-  const primaryType = sunSign.types[0];
-  const secondaryType = sunSign.types[1] || sunSign.types[0];
-  const [accent, dim] = accentFromType(TYPE_COLORS[primaryType]);
-  const primaryRgb = hexToRgbString(TYPE_COLORS[primaryType]);
+// actual Sun and Moon avatars' own official colors — not the sign's abstract typing.
+// This is a deliberate change from the type-based version: a sign only needs to share
+// one type with its avatar to be eligible (see poolForPlacement), so the avatar shown
+// isn't guaranteed to match the sign's own types at all — e.g. Scorpio's Poison/Dark/
+// Ghost typing could land on a Ghost/Fairy avatar, with Fairy never appearing in the
+// sign's own type list. Theming off the specific avatar's real color instead means the
+// page matches the Pokémon actually on screen, not just the zodiac category behind it.
+// Sun avatar drives the primary accent/button/text/card-border color; Moon avatar
+// drives the second background glow — same two-role split the type-based version used,
+// just sourced from colorForAvatar instead of TYPE_COLORS. The accent itself still goes
+// through accentFromType for legibility; the glows and card tint don't need that
+// treatment since they're low-opacity washes, not text.
+function applySignTheme(sunAvatar, moonAvatar){
+  const primaryHex = colorForAvatar(sunAvatar);
+  const secondaryHex = moonAvatar ? colorForAvatar(moonAvatar) : primaryHex;
+  const [accent, dim] = accentFromType(primaryHex);
+  const primaryRgb = hexToRgbString(primaryHex);
   const root = document.documentElement.style;
   root.setProperty('--gold', accent);
   root.setProperty('--gold-dim', dim);
-  root.setProperty('--glow-1', `rgba(${primaryRgb},0.10)`);
-  root.setProperty('--glow-2', `rgba(${hexToRgbString(TYPE_COLORS[secondaryType])},0.16)`);
+  root.setProperty('--glow-1', `rgba(${primaryRgb},0.24)`);
+  root.setProperty('--glow-2', `rgba(${hexToRgbString(secondaryHex)},0.32)`);
   root.setProperty('--card-border', `rgba(${primaryRgb},0.45)`);
-  root.setProperty('--card-tint', `rgba(${primaryRgb},0.07)`);
+  root.setProperty('--card-tint', `rgba(${primaryRgb},0.13)`);
 }
 
 const SIGNS = [
@@ -2114,7 +2250,7 @@ function renderResults(sun, sunAvatar, sunHouse, sunPlacement, moon, moonAvatar,
   const mercuryCross = mercuryPlacement.crossedWith, venusCross = venusPlacement.crossedWith, marsCross = marsPlacement.crossedWith;
   const partnerCross = partnerPlacement.crossedWith;
 
-  applySignTheme(sun);
+  applySignTheme(sunAvatar, moonAvatar);
   headlineEl.textContent = readingHeadline(sunAvatar, moonAvatar, risingAvatar);
 
   // Compact at-a-glance numerology line, shown above the fuller prose reading.
@@ -2233,13 +2369,13 @@ async function generateResultsCard(results){
   // Two soft glow blobs, same positions/roles as the live page's body background
   // (radial-gradient at 15%/8% and 85%/92%) — canvas has no CSS var() support, so these
   // get resolved above and painted manually instead, but the effect matches.
-  const glow1 = ctx.createRadialGradient(W*0.15, H*0.04, 0, W*0.15, H*0.04, W*0.55);
+  const glow1 = ctx.createRadialGradient(W*0.15, H*0.04, 0, W*0.15, H*0.04, W*0.75);
   glow1.addColorStop(0, themeGlow1);
   glow1.addColorStop(1, 'transparent');
   ctx.fillStyle = glow1;
   ctx.fillRect(0, 0, W, H);
 
-  const glow2 = ctx.createRadialGradient(W*0.85, H*0.92, 0, W*0.85, H*0.92, W*0.6);
+  const glow2 = ctx.createRadialGradient(W*0.85, H*0.92, 0, W*0.85, H*0.92, W*0.8);
   glow2.addColorStop(0, themeGlow2);
   glow2.addColorStop(1, 'transparent');
   ctx.fillStyle = glow2;
@@ -2353,5 +2489,6 @@ function ordinalSuffix(n){
   return 'th';
 }
 </script>
+<div class="version-badge">v1.1</div>
 </body>
 </html>
