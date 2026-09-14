@@ -445,24 +445,36 @@ function colorForAvatar(avatar){
 // Gray (only 7 Apricorn colors exist against 10 Pokédex color categories), so those
 // three reuse their nearest visual neighbor: Brown->Heavy (both read as sturdy/earthy),
 // Gray->Fast (closer to White's light-neutral family than to Black), Purple->Love
-// (closer to Pink than to Blue on the color wheel). Colors here are a reasonable
-// approximation of each ball's real dominant color, not a pixel-perfect reproduction —
-// several real designs (Level's dot pattern, Moon's crescent, Friend's flower, Love's
-// heart) have emblem details this simple top/bottom-color model doesn't attempt.
+// (closer to Pink than to Blue on the color wheel). Colors + the accent key (drawn by
+// pokeballMarkup/drawPokeballCanvas below) approximate each ball's real look — close
+// enough to read as that specific ball, not a pixel-perfect reproduction of the sprite.
 const APRICORN_BALLS = {
-  'Level Ball':  { top:'#A83232', bottom:'#f1eefc' },
-  'Lure Ball':   { top:'#2F6FA6', bottom:'#f1eefc' },
-  'Moon Ball':   { top:'#2B2560', bottom:'#f1eefc' },
-  'Friend Ball': { top:'#4CAF50', bottom:'#FDF6E3' },
-  'Love Ball':   { top:'#F27CA5', bottom:'#FFFFFF' },
-  'Fast Ball':   { top:'#F4C430', bottom:'#f1eefc' },
-  'Heavy Ball':  { top:'#2E2E2E', bottom:'#54545c' },
+  'Level Ball':  { name:'Level Ball',  top:'#A83232', bottom:'#f1eefc', accent:'dots' },
+  'Lure Ball':   { name:'Lure Ball',   top:'#2F6FA6', bottom:'#f1eefc', accent:'fin' },
+  'Moon Ball':   { name:'Moon Ball',   top:'#2B2560', bottom:'#f1eefc', accent:'crescent' },
+  'Friend Ball': { name:'Friend Ball', top:'#4CAF50', bottom:'#FDF6E3', accent:'flower' },
+  'Love Ball':   { name:'Love Ball',   top:'#F27CA5', bottom:'#FFFFFF', accent:'heart' },
+  'Fast Ball':   { name:'Fast Ball',   top:'#F4C430', bottom:'#f1eefc', accent:'wing' },
+  'Heavy Ball':  { name:'Heavy Ball',  top:'#2E2E2E', bottom:'#54545c', accent:'bumpers' },
 };
 const BALL_FOR_COLOR = {
   Red:'Level Ball', Blue:'Lure Ball', Yellow:'Moon Ball', Green:'Friend Ball',
   Pink:'Love Ball', White:'Fast Ball', Black:'Heavy Ball',
   Brown:'Heavy Ball', Gray:'Fast Ball', Purple:'Love Ball'
 };
+// Real item-sprite filenames in the same GitHub sprite repo spriteUrl() already pulls
+// avatar artwork from (see below) — item icons live at sprites/items/<slug>.png there.
+// Used to try loading an actual ball image before falling back to the hand-drawn
+// approximation in pokeballMarkup/drawPokeballCanvas.
+const BALL_IMAGE_SLUG = {
+  'Poke Ball':'poke-ball', 'Level Ball':'level-ball', 'Lure Ball':'lure-ball',
+  'Moon Ball':'moon-ball', 'Friend Ball':'friend-ball', 'Love Ball':'love-ball',
+  'Fast Ball':'fast-ball', 'Heavy Ball':'heavy-ball'
+};
+function ballImageUrl(ballName){
+  const slug = BALL_IMAGE_SLUG[ballName] || 'poke-ball';
+  return `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/${slug}.png`;
+}
 // Resolves an avatar straight to its Apricorn ball's {top, bottom} colors — used to
 // pick the wheel-center and downloadable-card Pokéball once Partner is known. Falls
 // back to Fast Ball (a neutral, always-legible default) if a name is ever missing.
@@ -470,6 +482,111 @@ function ballForAvatar(avatar){
   const category = POKEMON_COLOR[avatar.name];
   const ballName = BALL_FOR_COLOR[category] || 'Fast Ball';
   return APRICORN_BALLS[ballName];
+}
+// Draws the base two-tone Pokéball plus each Apricorn ball's actual distinguishing
+// mark — Level's diagonal dots, Lure's fin, Moon's crescent+stars, Friend's flower,
+// Love's heart, Fast's lightning wing, Heavy's side bumpers — so each one reads as
+// that specific ball rather than a plain ball with a different top color. Every accent
+// below is defined in coordinates relative to the ball's own center at a reference
+// radius of 55 (matching the isolated mockups this was designed against), then scaled
+// by r/55 at render time — same numbers reused for both the SVG and Canvas versions,
+// just expressed in each API's own syntax, so the two stay visually identical.
+function pokeballMarkup(cx, cy, r, ballInfo){
+  const topColor = ballInfo ? ballInfo.top : '#E63946';
+  const bottomColor = ballInfo ? ballInfo.bottom : '#f1eefc';
+  const accent = ballInfo ? ballInfo.accent : null;
+  const k = r/55; // scale factor from the reference radius
+  const pt = (x,y) => `${cx+x*k} ${cy+y*k}`;
+  let pre = '', post = '';
+  if (accent === 'bumpers'){
+    pre += `<ellipse cx="${cx-59*k}" cy="${cy}" rx="${9*k}" ry="${20*k}" fill="#8891A8" stroke="#1a1a2e" stroke-width="${2*k}"/>`;
+    pre += `<ellipse cx="${cx+59*k}" cy="${cy}" rx="${9*k}" ry="${20*k}" fill="#8891A8" stroke="#1a1a2e" stroke-width="${2*k}"/>`;
+  } else if (accent === 'dots'){
+    post += `<circle cx="${cx-23*k}" cy="${cy-33*k}" r="${4*k}" fill="${bottomColor}"/>`;
+    post += `<circle cx="${cx-13*k}" cy="${cy-25*k}" r="${4*k}" fill="${bottomColor}"/>`;
+    post += `<circle cx="${cx-3*k}" cy="${cy-17*k}" r="${4*k}" fill="${bottomColor}"/>`;
+  } else if (accent === 'fin'){
+    post += `<ellipse cx="${cx}" cy="${cy-49*k}" rx="${22*k}" ry="${10*k}" fill="#7FB8E0" stroke="#1a1a2e" stroke-width="${2*k}"/>`;
+    post += `<circle cx="${cx}" cy="${cy-49*k}" r="${4*k}" fill="#F4C430"/>`;
+  } else if (accent === 'crescent'){
+    post += `<circle cx="${cx-15*k}" cy="${cy-33*k}" r="${11*k}" fill="#F4C430"/>`;
+    post += `<circle cx="${cx-10*k}" cy="${cy-36*k}" r="${11*k}" fill="${topColor}"/>`;
+    post += `<circle cx="${cx+17*k}" cy="${cy-40*k}" r="${2.5*k}" fill="#F4C430"/>`;
+    post += `<circle cx="${cx+25*k}" cy="${cy-27*k}" r="${2*k}" fill="#F4C430"/>`;
+  } else if (accent === 'flower'){
+    const fx=cx, fy=cy-33*k;
+    const petals = [[0,-9],[8.5,-2.8],[5.3,7.3],[-5.3,7.3],[-8.5,-2.8]];
+    for (const [px,py] of petals) post += `<circle cx="${fx+px*k}" cy="${fy+py*k}" r="${6*k}" fill="${bottomColor}"/>`;
+    post += `<circle cx="${fx}" cy="${fy}" r="${5*k}" fill="#F4C430"/>`;
+  } else if (accent === 'heart'){
+    post += `<path d="M ${pt(0,-25)} C ${pt(-7,-33)}, ${pt(-19,-31)}, ${pt(-19,-21)} C ${pt(-19,-12)}, ${pt(0,3)}, ${pt(0,3)} C ${pt(0,3)}, ${pt(19,-12)}, ${pt(19,-21)} C ${pt(19,-31)}, ${pt(7,-33)}, ${pt(0,-25)} Z" fill="${bottomColor}"/>`;
+  } else if (accent === 'wing'){
+    post += `<path d="M ${pt(-45,-15)} L ${pt(-20,-25)} L ${pt(-27,-10)} L ${pt(-13,-17)} L ${pt(-35,3)} Z" fill="#E85D2A"/>`;
+  }
+  let svg = pre;
+  svg += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${topColor}"/>`;
+  svg += `<path d="M ${cx-r} ${cy} A ${r} ${r} 0 0 0 ${cx+r} ${cy} Z" fill="${bottomColor}"/>`;
+  svg += `<rect x="${cx-r}" y="${cy-3*k}" width="${r*2}" height="${6*k}" fill="#1a1a2e"/>`;
+  svg += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#1a1a2e" stroke-width="${3*k}"/>`;
+  svg += post;
+  svg += `<circle cx="${cx}" cy="${cy}" r="${r*0.29}" fill="${bottomColor}" stroke="#1a1a2e" stroke-width="${4*k}"/>`;
+  // Real ball artwork layered on top of the hand-drawn version above — same sprite
+  // repo spriteUrl() already uses for avatar art. If it loads, it visually covers the
+  // approximation entirely (opaque sprite over an identically-sized/positioned base);
+  // if it fails — no network, or this specific filename doesn't exist in the repo —
+  // onerror hides it and the hand-drawn ball underneath is what's actually seen. Never
+  // a broken-image icon or blank gap either way.
+  const ballName = ballInfo && ballInfo.name ? ballInfo.name : 'Poke Ball';
+  svg += `<image href="${ballImageUrl(ballName)}" x="${cx-r}" y="${cy-r}" width="${r*2}" height="${r*2}" onerror="this.style.opacity='0'"/>`;
+  return svg;
+}
+function drawPokeballCanvas(ctx, cx, cy, r, ballInfo){
+  const topColor = ballInfo ? ballInfo.top : '#E63946';
+  const bottomColor = ballInfo ? ballInfo.bottom : '#f1eefc';
+  const accent = ballInfo ? ballInfo.accent : null;
+  const k = r/55;
+  const circ = (x,y,rad,fill,stroke,sw) => {
+    ctx.beginPath(); ctx.arc(cx+x*k, cy+y*k, rad*k, 0, Math.PI*2);
+    if (fill){ ctx.fillStyle = fill; ctx.fill(); }
+    if (stroke){ ctx.strokeStyle = stroke; ctx.lineWidth = sw*k; ctx.stroke(); }
+  };
+  if (accent === 'bumpers'){
+    const ell = (x) => { ctx.beginPath(); ctx.ellipse(cx+x*k, cy, 9*k, 20*k, 0, 0, Math.PI*2); ctx.fillStyle='#8891A8'; ctx.fill(); ctx.strokeStyle='#1a1a2e'; ctx.lineWidth=2*k; ctx.stroke(); };
+    ell(-59); ell(59);
+  }
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.fillStyle = topColor; ctx.fill();
+  ctx.beginPath(); ctx.moveTo(cx+r, cy); ctx.arc(cx, cy, r, 0, Math.PI, false); ctx.closePath();
+  ctx.fillStyle = bottomColor; ctx.fill();
+  ctx.fillStyle = '#1a1a2e'; ctx.fillRect(cx-r, cy-3*k, r*2, 6*k);
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.strokeStyle = '#1a1a2e'; ctx.lineWidth = 3*k; ctx.stroke();
+  if (accent === 'dots'){
+    circ(-23,-33,4,bottomColor); circ(-13,-25,4,bottomColor); circ(-3,-17,4,bottomColor);
+  } else if (accent === 'fin'){
+    ctx.beginPath(); ctx.ellipse(cx, cy-49*k, 22*k, 10*k, 0, 0, Math.PI*2);
+    ctx.fillStyle = '#7FB8E0'; ctx.fill(); ctx.strokeStyle = '#1a1a2e'; ctx.lineWidth = 2*k; ctx.stroke();
+    circ(0,-49,4,'#F4C430');
+  } else if (accent === 'crescent'){
+    circ(-15,-33,11,'#F4C430'); circ(-10,-36,11,topColor);
+    circ(17,-40,2.5,'#F4C430'); circ(25,-27,2,'#F4C430');
+  } else if (accent === 'flower'){
+    const petals = [[0,-9],[8.5,-2.8],[5.3,7.3],[-5.3,7.3],[-8.5,-2.8]];
+    for (const [px,py] of petals) circ(px, -33+py, 6, bottomColor);
+    circ(0,-33,5,'#F4C430');
+  } else if (accent === 'heart'){
+    ctx.beginPath();
+    ctx.moveTo(cx+0*k, cy-25*k);
+    ctx.bezierCurveTo(cx-7*k, cy-33*k, cx-19*k, cy-31*k, cx-19*k, cy-21*k);
+    ctx.bezierCurveTo(cx-19*k, cy-12*k, cx+0*k, cy+3*k, cx+0*k, cy+3*k);
+    ctx.bezierCurveTo(cx+0*k, cy+3*k, cx+19*k, cy-12*k, cx+19*k, cy-21*k);
+    ctx.bezierCurveTo(cx+19*k, cy-31*k, cx+7*k, cy-33*k, cx+0*k, cy-25*k);
+    ctx.closePath(); ctx.fillStyle = bottomColor; ctx.fill();
+  } else if (accent === 'wing'){
+    ctx.beginPath();
+    ctx.moveTo(cx-45*k, cy-15*k); ctx.lineTo(cx-20*k, cy-25*k); ctx.lineTo(cx-27*k, cy-10*k);
+    ctx.lineTo(cx-13*k, cy-17*k); ctx.lineTo(cx-35*k, cy+3*k); ctx.closePath();
+    ctx.fillStyle = '#E85D2A'; ctx.fill();
+  }
+  circ(0,0,r*0.29/k,bottomColor,'#1a1a2e',4);
 }
 // Retheme the page's accent color, background glows, and card borders/tint around the
 // actual Sun and Moon avatars' own official colors — not the sign's abstract typing.
@@ -1955,15 +2072,10 @@ function buildWheel(activeIndex, ballInfo){
   // A small Pokéball in the wheel's center — built from basic shapes rather than an
   // image so it scales cleanly and needs no network request. Generic classic red/white
   // ball when no ballInfo is given (the page's initial state, before Partner is known);
-  // once Partner's avatar is known, its Apricorn ball (see ballForAvatar) replaces it.
+  // once Partner's avatar is known, its actual Apricorn ball (see ballForAvatar) —
+  // color and accent both — replaces it.
   const ballR = (rInner-6) * 0.62;
-  const topColor = ballInfo ? ballInfo.top : '#E63946';
-  const bottomColor = ballInfo ? ballInfo.bottom : '#f1eefc';
-  svg += `<circle cx="${cx}" cy="${cy}" r="${ballR}" fill="${topColor}"/>`;
-  svg += `<path d="M ${cx-ballR} ${cy} A ${ballR} ${ballR} 0 0 0 ${cx+ballR} ${cy} Z" fill="${bottomColor}"/>`;
-  svg += `<rect x="${cx-ballR}" y="${cy-3}" width="${ballR*2}" height="6" fill="#1a1a2e"/>`;
-  svg += `<circle cx="${cx}" cy="${cy}" r="${ballR}" fill="none" stroke="#1a1a2e" stroke-width="3"/>`;
-  svg += `<circle cx="${cx}" cy="${cy}" r="${ballR*0.29}" fill="${bottomColor}" stroke="#1a1a2e" stroke-width="4"/>`;
+  svg += pokeballMarkup(cx, cy, ballR, ballInfo);
   wheelSvg.innerHTML = svg;
 }
 function polar(cx,cy,r,angleDeg){
@@ -2486,36 +2598,19 @@ async function generateResultsCard(results){
     });
   });
 
-  // Small Apricorn-ball Pokéball echoing the one in the zodiac wheel — same shape/
-  // roles, drawn with canvas primitives since there's no SVG to reuse here. Colors
-  // come from the Partner avatar's official color, same as the wheel's center ball.
+  // Small Apricorn-ball Pokéball echoing the one in the zodiac wheel — same shape,
+  // roles, and accent marks. Tries the same real sprite-repo artwork the wheel now
+  // uses first; falls back to the hand-drawn version (still colored/accented
+  // correctly) only if that image fails to load.
   const partnerResult = results.find(r => r.kicker === 'PARTNER');
-  const ballColors = partnerResult ? ballForAvatar(partnerResult.avatar) : { top: themeGold, bottom: '#f1eefc' };
+  const ballInfo = partnerResult ? ballForAvatar(partnerResult.avatar) : { name:'Poke Ball', top: themeGold, bottom: '#f1eefc', accent: null };
   const ballCx = W - padX - 30, ballCy = 1734, ballR = 30;
-  ctx.beginPath();
-  ctx.arc(ballCx, ballCy, ballR, 0, Math.PI*2);
-  ctx.fillStyle = ballColors.top;
-  ctx.fill();
-  ctx.beginPath();
-  ctx.moveTo(ballCx+ballR, ballCy);
-  ctx.arc(ballCx, ballCy, ballR, 0, Math.PI, false); // bottom half, right -> bottom -> left
-  ctx.closePath();
-  ctx.fillStyle = ballColors.bottom;
-  ctx.fill();
-  ctx.fillStyle = '#1a1a2e';
-  ctx.fillRect(ballCx-ballR, ballCy-3, ballR*2, 6);
-  ctx.beginPath();
-  ctx.arc(ballCx, ballCy, ballR, 0, Math.PI*2);
-  ctx.strokeStyle = '#1a1a2e';
-  ctx.lineWidth = 3;
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.arc(ballCx, ballCy, ballR*0.29, 0, Math.PI*2);
-  ctx.fillStyle = ballColors.bottom;
-  ctx.fill();
-  ctx.strokeStyle = '#1a1a2e';
-  ctx.lineWidth = 4;
-  ctx.stroke();
+  const ballImg = await loadImageForCanvas(ballImageUrl(ballInfo.name || 'Poke Ball'));
+  if (ballImg){
+    ctx.drawImage(ballImg, ballCx-ballR, ballCy-ballR, ballR*2, ballR*2);
+  } else {
+    drawPokeballCanvas(ctx, ballCx, ballCy, ballR, ballInfo);
+  }
 
   ctx.textAlign = 'center';
   ctx.fillStyle = '#605a86';
@@ -2563,6 +2658,6 @@ function ordinalSuffix(n){
   return 'th';
 }
 </script>
-<div class="version-badge">v1.6</div>
+<div class="version-badge">v1.8</div>
 </body>
 </html>
