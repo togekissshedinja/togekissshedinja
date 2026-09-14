@@ -2212,6 +2212,8 @@ async function generateResultsCard(results){
   // silently staying the default gold regardless of what theme is active.
   const themeGold = getComputedStyle(document.documentElement).getPropertyValue('--gold').trim() || '#e8b84b';
   const themeCardTint = getComputedStyle(document.documentElement).getPropertyValue('--card-tint').trim() || 'rgba(255,255,255,0.045)';
+  const themeGlow1 = getComputedStyle(document.documentElement).getPropertyValue('--glow-1').trim() || 'rgba(232,184,75,0.07)';
+  const themeGlow2 = getComputedStyle(document.documentElement).getPropertyValue('--glow-2').trim() || 'rgba(120,90,220,0.15)';
 
   try {
     await Promise.all([
@@ -2226,6 +2228,21 @@ async function generateResultsCard(results){
   grad.addColorStop(0, '#1b1640');
   grad.addColorStop(1, '#0b0920');
   ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Two soft glow blobs, same positions/roles as the live page's body background
+  // (radial-gradient at 15%/8% and 85%/92%) — canvas has no CSS var() support, so these
+  // get resolved above and painted manually instead, but the effect matches.
+  const glow1 = ctx.createRadialGradient(W*0.15, H*0.04, 0, W*0.15, H*0.04, W*0.55);
+  glow1.addColorStop(0, themeGlow1);
+  glow1.addColorStop(1, 'transparent');
+  ctx.fillStyle = glow1;
+  ctx.fillRect(0, 0, W, H);
+
+  const glow2 = ctx.createRadialGradient(W*0.85, H*0.92, 0, W*0.85, H*0.92, W*0.6);
+  glow2.addColorStop(0, themeGlow2);
+  glow2.addColorStop(1, 'transparent');
+  ctx.fillStyle = glow2;
   ctx.fillRect(0, 0, W, H);
 
   ctx.textAlign = 'center';
