@@ -439,6 +439,38 @@ function colorForAvatar(avatar){
   const category = POKEMON_COLOR[avatar.name];
   return POKEDEX_COLOR_HEX[category] || POKEDEX_COLOR_HEX.Gray;
 }
+// The 7 real Apricorn Balls (crafted from colored Apricorns, introduced Gen II) —
+// verified pairings, not guessed: Red->Level, Blue->Lure, Yellow->Moon, Green->Friend,
+// Pink->Love, White->Fast, Black->Heavy. There's no official Apricorn for Brown/Purple/
+// Gray (only 7 Apricorn colors exist against 10 Pokédex color categories), so those
+// three reuse their nearest visual neighbor: Brown->Heavy (both read as sturdy/earthy),
+// Gray->Fast (closer to White's light-neutral family than to Black), Purple->Love
+// (closer to Pink than to Blue on the color wheel). Colors here are a reasonable
+// approximation of each ball's real dominant color, not a pixel-perfect reproduction —
+// several real designs (Level's dot pattern, Moon's crescent, Friend's flower, Love's
+// heart) have emblem details this simple top/bottom-color model doesn't attempt.
+const APRICORN_BALLS = {
+  'Level Ball':  { top:'#A83232', bottom:'#f1eefc' },
+  'Lure Ball':   { top:'#2F6FA6', bottom:'#f1eefc' },
+  'Moon Ball':   { top:'#2B2560', bottom:'#f1eefc' },
+  'Friend Ball': { top:'#4CAF50', bottom:'#FDF6E3' },
+  'Love Ball':   { top:'#F27CA5', bottom:'#FFFFFF' },
+  'Fast Ball':   { top:'#F4C430', bottom:'#f1eefc' },
+  'Heavy Ball':  { top:'#2E2E2E', bottom:'#54545c' },
+};
+const BALL_FOR_COLOR = {
+  Red:'Level Ball', Blue:'Lure Ball', Yellow:'Moon Ball', Green:'Friend Ball',
+  Pink:'Love Ball', White:'Fast Ball', Black:'Heavy Ball',
+  Brown:'Heavy Ball', Gray:'Fast Ball', Purple:'Love Ball'
+};
+// Resolves an avatar straight to its Apricorn ball's {top, bottom} colors — used to
+// pick the wheel-center and downloadable-card Pokéball once Partner is known. Falls
+// back to Fast Ball (a neutral, always-legible default) if a name is ever missing.
+function ballForAvatar(avatar){
+  const category = POKEMON_COLOR[avatar.name];
+  const ballName = BALL_FOR_COLOR[category] || 'Fast Ball';
+  return APRICORN_BALLS[ballName];
+}
 // Retheme the page's accent color, background glows, and card borders/tint around the
 // actual Sun and Moon avatars' own official colors — not the sign's abstract typing.
 // This is a deliberate change from the type-based version: a sign only needs to share
@@ -1900,7 +1932,7 @@ function spriteUrlHome(avatar){
 
 // --- Wheel ---
 const wheelSvg = document.getElementById('wheel');
-function buildWheel(activeIndex){
+function buildWheel(activeIndex, ballInfo){
   const cx=150, cy=150, rOuter=140, rInner=88, glyphR=114;
   let svg = '';
   SIGNS.forEach((sign, i) => {
@@ -1920,6 +1952,18 @@ function buildWheel(activeIndex){
     svg += `<text class="wedge-glyph ${isActive?'active':''}" x="${gp.x}" y="${gp.y}" text-anchor="middle" dominant-baseline="middle">${sign.symbol}</text>`;
   });
   svg += `<circle cx="${cx}" cy="${cy}" r="${rInner-6}" fill="#0f0c22" stroke="#2c2555" stroke-width="1"/>`;
+  // A small Pokéball in the wheel's center — built from basic shapes rather than an
+  // image so it scales cleanly and needs no network request. Generic classic red/white
+  // ball when no ballInfo is given (the page's initial state, before Partner is known);
+  // once Partner's avatar is known, its Apricorn ball (see ballForAvatar) replaces it.
+  const ballR = (rInner-6) * 0.62;
+  const topColor = ballInfo ? ballInfo.top : '#E63946';
+  const bottomColor = ballInfo ? ballInfo.bottom : '#f1eefc';
+  svg += `<circle cx="${cx}" cy="${cy}" r="${ballR}" fill="${topColor}"/>`;
+  svg += `<path d="M ${cx-ballR} ${cy} A ${ballR} ${ballR} 0 0 0 ${cx+ballR} ${cy} Z" fill="${bottomColor}"/>`;
+  svg += `<rect x="${cx-ballR}" y="${cy-3}" width="${ballR*2}" height="6" fill="#1a1a2e"/>`;
+  svg += `<circle cx="${cx}" cy="${cy}" r="${ballR}" fill="none" stroke="#1a1a2e" stroke-width="3"/>`;
+  svg += `<circle cx="${cx}" cy="${cy}" r="${ballR*0.29}" fill="${bottomColor}" stroke="#1a1a2e" stroke-width="4"/>`;
   wheelSvg.innerHTML = svg;
 }
 function polar(cx,cy,r,angleDeg){
@@ -1950,8 +1994,6 @@ document.getElementById('submitBtn').addEventListener('click', function(){
   const longitude = Number(lonVal);
 
   const sunSign = getSunSign(mo, d);
-  const sunIndex = SIGNS.indexOf(sunSign);
-  buildWheel(sunIndex);
 
   const daysJ2000 = daysSinceJ2000(y, mo, d, hh, mi, utcOffset);
   const sunLon = sunEclipticLongitude(daysJ2000);
@@ -2251,6 +2293,7 @@ function renderResults(sun, sunAvatar, sunHouse, sunPlacement, moon, moonAvatar,
   const partnerCross = partnerPlacement.crossedWith;
 
   applySignTheme(sunAvatar, moonAvatar);
+  buildWheel(SIGNS.indexOf(sun), ballForAvatar(partnerAvatar));
   headlineEl.textContent = readingHeadline(sunAvatar, moonAvatar, risingAvatar);
 
   // Compact at-a-glance numerology line, shown above the fuller prose reading.
@@ -2338,7 +2381,7 @@ function loadImageForCanvas(src){
 }
 async function generateResultsCard(results){
   const canvas = document.createElement('canvas');
-  const W = 1080, H = 1770;
+  const W = 1080, H = 1820;
   canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext('2d');
   // Canvas drawing can't read CSS variables the way regular page elements can — a
@@ -2443,6 +2486,37 @@ async function generateResultsCard(results){
     });
   });
 
+  // Small Apricorn-ball Pokéball echoing the one in the zodiac wheel — same shape/
+  // roles, drawn with canvas primitives since there's no SVG to reuse here. Colors
+  // come from the Partner avatar's official color, same as the wheel's center ball.
+  const partnerResult = results.find(r => r.kicker === 'PARTNER');
+  const ballColors = partnerResult ? ballForAvatar(partnerResult.avatar) : { top: themeGold, bottom: '#f1eefc' };
+  const ballCx = W - padX - 30, ballCy = 1734, ballR = 30;
+  ctx.beginPath();
+  ctx.arc(ballCx, ballCy, ballR, 0, Math.PI*2);
+  ctx.fillStyle = ballColors.top;
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(ballCx+ballR, ballCy);
+  ctx.arc(ballCx, ballCy, ballR, 0, Math.PI, false); // bottom half, right -> bottom -> left
+  ctx.closePath();
+  ctx.fillStyle = ballColors.bottom;
+  ctx.fill();
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(ballCx-ballR, ballCy-3, ballR*2, 6);
+  ctx.beginPath();
+  ctx.arc(ballCx, ballCy, ballR, 0, Math.PI*2);
+  ctx.strokeStyle = '#1a1a2e';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(ballCx, ballCy, ballR*0.29, 0, Math.PI*2);
+  ctx.fillStyle = ballColors.bottom;
+  ctx.fill();
+  ctx.strokeStyle = '#1a1a2e';
+  ctx.lineWidth = 4;
+  ctx.stroke();
+
   ctx.textAlign = 'center';
   ctx.fillStyle = '#605a86';
   ctx.font = '400 20px Inter, sans-serif';
@@ -2489,6 +2563,6 @@ function ordinalSuffix(n){
   return 'th';
 }
 </script>
-<div class="version-badge">v1.3</div>
+<div class="version-badge">v1.6</div>
 </body>
 </html>
