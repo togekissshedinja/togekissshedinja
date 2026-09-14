@@ -18,6 +18,8 @@
     --gold-dim:#a3833a;
     --glow-1: rgba(232,184,75,0.07);
     --glow-2: rgba(120,90,220,0.15);
+    --card-border: var(--line);
+    --card-tint: rgba(232,184,75,0.05);
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
@@ -106,8 +108,10 @@
   @media (max-width:640px){.cards{grid-template-columns:1fr;}}
 
   .card{
-    background:var(--bg-panel);
-    border:1px solid var(--line);
+    background:
+      linear-gradient(150deg, var(--card-tint), transparent 65%),
+      var(--bg-panel);
+    border:1px solid var(--card-border);
     border-radius:16px;
     padding:22px 20px;
     display:flex;
@@ -305,21 +309,25 @@ function hexToRgbString(hex){
   const b = parseInt(hex.substr(4,2),16);
   return `${r},${g},${b}`;
 }
-// Retheme the page's accent color and background glows around the Sun sign's typing —
-// the one placement that's always present and always the "headline" sign. Two-typed
-// signs get a two-tone theme (first type drives the accent/button/text color, second
-// drives the second background glow); single/triple-typed signs reuse the first type
-// for both. The accent itself goes through accentFromType for legibility; the glows
-// don't need that treatment since they're just a low-opacity background wash, not text.
+// Retheme the page's accent color, background glows, and card borders/tint around the
+// Sun sign's typing — the one placement that's always present and always the
+// "headline" sign. Two-typed signs get a two-tone theme (first type drives the accent/
+// button/text/card-border color, second drives the second background glow); single/
+// triple-typed signs reuse the first type for both. The accent itself goes through
+// accentFromType for legibility; the glows and card tint don't need that treatment
+// since they're low-opacity washes, not text.
 function applySignTheme(sunSign){
   const primaryType = sunSign.types[0];
   const secondaryType = sunSign.types[1] || sunSign.types[0];
   const [accent, dim] = accentFromType(TYPE_COLORS[primaryType]);
+  const primaryRgb = hexToRgbString(TYPE_COLORS[primaryType]);
   const root = document.documentElement.style;
   root.setProperty('--gold', accent);
   root.setProperty('--gold-dim', dim);
-  root.setProperty('--glow-1', `rgba(${hexToRgbString(TYPE_COLORS[primaryType])},0.10)`);
+  root.setProperty('--glow-1', `rgba(${primaryRgb},0.10)`);
   root.setProperty('--glow-2', `rgba(${hexToRgbString(TYPE_COLORS[secondaryType])},0.16)`);
+  root.setProperty('--card-border', `rgba(${primaryRgb},0.45)`);
+  root.setProperty('--card-tint', `rgba(${primaryRgb},0.07)`);
 }
 
 const SIGNS = [
@@ -2203,6 +2211,7 @@ async function generateResultsCard(results){
   // match the Sun-sign theme applySignTheme already set on the live page, instead of
   // silently staying the default gold regardless of what theme is active.
   const themeGold = getComputedStyle(document.documentElement).getPropertyValue('--gold').trim() || '#e8b84b';
+  const themeCardTint = getComputedStyle(document.documentElement).getPropertyValue('--card-tint').trim() || 'rgba(255,255,255,0.045)';
 
   try {
     await Promise.all([
@@ -2232,7 +2241,7 @@ async function generateResultsCard(results){
   const top0 = 165, rowH = 205, rowGap = 14, padX = 56;
   results.forEach((r, i) => {
     const rowTop = top0 + i*(rowH+rowGap);
-    ctx.fillStyle = 'rgba(255,255,255,0.045)';
+    ctx.fillStyle = themeCardTint;
     roundRectPath(ctx, padX, rowTop, W - padX*2, rowH, 20);
     ctx.fill();
 
