@@ -2182,6 +2182,11 @@ buildWheel(-1);
   let debounceTimer = null;
   let currentResults = [];
   let highlightedIndex = -1;
+  // Kept after a place is picked so the offset can be recomputed whenever the birth
+  // date/time changes afterward too — not just once, at the moment of selection. Reset
+  // to null if the person clears the location field, so date/time changes stop trying
+  // to auto-fill an offset with no place behind it.
+  let resolvedTimezone = null;
 
   function hideResults(){
     resultsEl.classList.remove('show');
@@ -2207,6 +2212,30 @@ buildWheel(-1);
     });
   }
 
+  // Recomputes and fills the UTC offset fields from resolvedTimezone + whatever birth
+  // date/time is currently entered — called both right after picking a place and again
+  // any time the date/time fields change afterward, so DST is always correct for the
+  // actual date entered, not just whatever was filled in at selection time.
+  function recomputeOffset(){
+    if (!resolvedTimezone) return;
+    const dateVal = document.getElementById('bdate').value;
+    const timeVal = document.getElementById('btime').value;
+    if (!dateVal || !timeVal){
+      statusEl.textContent = 'Location set. Fill in birth date and time to auto-fill the UTC offset for daylight saving.';
+      return;
+    }
+    const [y,mo,d] = dateVal.split('-').map(Number);
+    const [hh,mi] = timeVal.split(':').map(Number);
+    const offset = suggestedUtcOffset(resolvedTimezone, y, mo, d, hh, mi);
+    if (offset === null){
+      statusEl.textContent = 'Latitude/longitude filled in. Enter the UTC offset yourself — this timezone couldn\'t be resolved for that date.';
+      return;
+    }
+    document.getElementById('utcoffsetSign').value = offset < 0 ? '-1' : '1';
+    document.getElementById('utcoffset').value = Math.abs(offset);
+    statusEl.textContent = `UTC offset for this date: ${offset < 0 ? '−' : '+'}${Math.abs(offset)} — kept in sync with the date/time above; adjust it yourself if you'd rather.`;
+  }
+
   function selectPlace(place){
     const lat = Number(place.lat);
     const lon = Number(place.lon);
@@ -2215,25 +2244,11 @@ buildWheel(-1);
     searchInput.value = place.display_name;
     hideResults();
 
-    // Suggest a UTC offset too, using whatever birth date/time is already filled in —
-    // skip silently if those aren't set yet or the country/timezone can't be resolved,
-    // leaving the offset fields exactly as they were for manual entry either way.
     const countryCode = place.address && place.address.country_code;
-    const dateVal = document.getElementById('bdate').value;
-    const timeVal = document.getElementById('btime').value;
-    if (countryCode && dateVal && timeVal){
-      const tz = resolveTimezone(countryCode, lat, lon);
-      if (tz){
-        const [y,mo,d] = dateVal.split('-').map(Number);
-        const [hh,mi] = timeVal.split(':').map(Number);
-        const offset = suggestedUtcOffset(tz, y, mo, d, hh, mi);
-        if (offset !== null){
-          document.getElementById('utcoffsetSign').value = offset < 0 ? '-1' : '1';
-          document.getElementById('utcoffset').value = Math.abs(offset);
-          statusEl.textContent = `Suggested UTC offset for this date: ${offset < 0 ? '−' : '+'}${Math.abs(offset)} — adjust it above if needed.`;
-          return;
-        }
-      }
+    resolvedTimezone = countryCode ? resolveTimezone(countryCode, lat, lon) : null;
+    if (resolvedTimezone){
+      recomputeOffset();
+      return;
     }
     statusEl.textContent = 'Latitude/longitude filled in. Enter the UTC offset yourself — birth date/time or timezone weren\'t enough to suggest one.';
   }
@@ -2283,6 +2298,19 @@ buildWheel(-1);
 
   document.addEventListener('click', function(e){
     if (!e.target.closest('.place-search-wrap')) hideResults();
+  });
+
+  // The actual fix for offset going stale: if a place was already picked, keep the
+  // UTC offset in sync whenever birth date or time changes afterward too, not just
+  // once at selection time — this is what makes it DST-correct regardless of the
+  // order someone fills the form in.
+  document.getElementById('bdate').addEventListener('change', recomputeOffset);
+  document.getElementById('btime').addEventListener('change', recomputeOffset);
+
+  // Manually clearing the location field turns off auto-recompute, so a later date/
+  // time edit doesn't silently overwrite an offset the person has taken back over.
+  searchInput.addEventListener('input', function(){
+    if (searchInput.value.trim() === '') resolvedTimezone = null;
   });
 })();
 
@@ -2900,6 +2928,6 @@ function ordinalSuffix(n){
   return 'th';
 }
 </script>
-<div class="version-badge">v2.5</div>
+<div class="version-badge">v2.6</div>
 </body>
 </html>
