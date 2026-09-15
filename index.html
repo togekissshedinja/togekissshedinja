@@ -20,6 +20,17 @@
     --glow-2: rgba(120,90,220,0.15);
     --card-border: var(--line);
     --card-tint: rgba(232,184,75,0.05);
+    --avatar-glow: rgba(232,184,75,0.45);
+    --button-text:#181433;
+  }
+  html.light-mode{
+    --bg:#f5f2fa;
+    --bg-panel:#ffffff;
+    --bg-panel-2:#f2eef8;
+    --line:#ddd6ea;
+    --text:#211a3d;
+    --text-muted:#6b6285;
+    --button-text:#ffffff;
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
@@ -102,7 +113,7 @@
 
   button{
     background:var(--gold);
-    color:#181433;
+    color:var(--button-text);
     border:none;
     border-radius:9px;
     padding:11px 22px;
@@ -145,19 +156,21 @@
     font-size:1.35rem;
     margin:0;
   }
-  .sprite-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
-  .sprite-row img{width:56px;height:56px;image-rendering:auto;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.4));}
+  .sprite-row{display:flex;align-items:center;gap:16px;flex-wrap:wrap;}
+  .sprite-row img{width:92px;height:92px;image-rendering:auto;filter:drop-shadow(0 0 18px var(--avatar-glow)) drop-shadow(0 2px 6px rgba(0,0,0,0.4));}
   .sprite-extra{display:flex;gap:8px;margin-left:auto;}
   .sprite-extra img{width:34px;height:34px;object-fit:contain;opacity:0.85;filter:drop-shadow(0 1px 4px rgba(0,0,0,0.4));}
   @media (max-width:640px){
-    .sprite-row{gap:10px;}
-    .sprite-row img{width:40px;height:40px;}
+    .sprite-row{gap:12px;}
+    .sprite-row img{width:68px;height:68px;}
     .sprite-extra{gap:6px;}
     .sprite-extra img{width:24px;height:24px;}
+    .reading-headline{padding-left:70px; padding-right:70px;}
   }
   @media (max-width:380px){
-    .sprite-row img{width:34px;height:34px;}
+    .sprite-row img{width:58px;height:58px;}
     .sprite-extra img{width:20px;height:20px;}
+    .reading-headline{padding-left:8px; padding-right:8px; margin-top:44px;}
   }
   .badges{display:flex;gap:6px;flex-wrap:wrap;}
   .badge{
@@ -197,6 +210,22 @@
     line-height:1.5;
     letter-spacing:0.01em;
     margin-bottom:26px;
+    padding-bottom:18px;
+    padding-left:110px;
+    padding-right:110px;
+    position:relative;
+  }
+  .reading-headline::after{
+    content:'';
+    position:absolute;
+    bottom:0;
+    left:50%;
+    transform:translateX(-50%);
+    width:56px;
+    height:3px;
+    border-radius:2px;
+    background:var(--gold);
+    opacity:0.55;
   }
 
   .note{font-size:0.78rem;color:var(--text-muted); text-align:center; margin-top:10px;}
@@ -211,9 +240,44 @@
     pointer-events:none;
     z-index:10;
   }
+  .mode-toggle{
+    position:fixed;
+    top:14px;
+    right:14px;
+    z-index:20;
+    display:flex;
+    background:var(--bg-panel-2);
+    border:1px solid var(--line);
+    border-radius:9px;
+    padding:3px;
+    gap:2px;
+  }
+  .mode-btn{
+    border:none;
+    background:transparent;
+    color:var(--text-muted);
+    font-family:'Inter',sans-serif;
+    font-size:0.72rem;
+    font-weight:600;
+    padding:6px 12px;
+    border-radius:7px;
+    cursor:pointer;
+  }
+  .mode-btn.active{
+    background:var(--gold);
+    color:var(--button-text);
+  }
+  @media (max-width:480px){
+    .mode-toggle{top:10px; right:10px;}
+    .mode-btn{padding:5px 9px; font-size:0.68rem;}
+  }
 </style>
 </head>
 <body>
+<div class="mode-toggle" id="modeToggle">
+  <button type="button" id="darkModeBtn" class="mode-btn active" aria-label="Dark mode">Dark</button>
+  <button type="button" id="lightModeBtn" class="mode-btn" aria-label="Light mode">Light</button>
+</div>
 <div class="wrap">
   <header>
     <h1>Pokédex Astrology</h1>
@@ -253,11 +317,11 @@
       </div>
       <div class="field">
         <label for="latitude">Birth latitude</label>
-        <input type="number" id="latitude" step="0.01" placeholder="e.g. 40.71">
+        <input type="number" id="latitude" step="0.01" min="-90" max="90" placeholder="e.g. 40.71">
       </div>
       <div class="field">
         <label for="longitude">Birth longitude</label>
-        <input type="number" id="longitude" step="0.01" placeholder="e.g. -74.01">
+        <input type="number" id="longitude" step="0.01" min="-180" max="180" placeholder="e.g. -74.01">
       </div>
       <div class="field">
         <label for="userName">Name</label>
@@ -334,13 +398,28 @@ function hslToHex(h,s,l){
 }
 // Same 60%-lightness floor the current default gold (#e8b84b) already sits at, and the
 // same saturation/lightness ratios measured between it and --gold-dim (#a3833a), so a
-// type-derived theme feels like the same design system, not a different one.
-function accentFromType(hex){
+// type-derived theme feels like the same design system, not a different one. In light
+// mode the direction flips: instead of lifting lightness up (for legibility as light
+// text on a dark background), it's capped down (for legibility as dark text on a
+// light/white background) — and the "dim" variant recedes the opposite way in each
+// mode too: darker/less saturated to fade into dark navy, lighter/paler to fade into
+// white.
+function accentFromType(hex, isLight){
   let [h,s,l] = hexToHsl(hex);
-  l = Math.max(l, 60);
-  s = Math.max(s, 55);
-  const accent = hslToHex(h,s,l);
-  const dim = hslToHex(h, s*0.62, l*0.72);
+  let accentL, accentS, dimL, dimS;
+  if (isLight){
+    accentL = Math.min(l, 42);
+    accentS = Math.max(s, 60);
+    dimL = Math.min(accentL + 30, 78);
+    dimS = accentS * 0.5;
+  } else {
+    accentL = Math.max(l, 60);
+    accentS = Math.max(s, 55);
+    dimL = accentL * 0.72;
+    dimS = accentS * 0.62;
+  }
+  const accent = hslToHex(h, accentS, accentL);
+  const dim = hslToHex(h, dimS, dimL);
   return [accent, dim];
 }
 function hexToRgbString(hex){
@@ -534,17 +613,26 @@ function pokeballImageMarkup(cx, cy, r, ballInfo){
 // through accentFromType for legibility; the glows and card tint don't need that
 // treatment since they're low-opacity washes, not text.
 function applySignTheme(sunAvatar, moonAvatar){
+  const isLight = document.documentElement.classList.contains('light-mode');
   const primaryHex = colorForAvatar(sunAvatar);
   const secondaryHex = moonAvatar ? colorForAvatar(moonAvatar) : primaryHex;
-  const [accent, dim] = accentFromType(primaryHex);
+  const [accent, dim] = accentFromType(primaryHex, isLight);
   const primaryRgb = hexToRgbString(primaryHex);
   const root = document.documentElement.style;
   root.setProperty('--gold', accent);
   root.setProperty('--gold-dim', dim);
-  root.setProperty('--glow-1', `rgba(${primaryRgb},0.24)`);
-  root.setProperty('--glow-2', `rgba(${hexToRgbString(secondaryHex)},0.32)`);
-  root.setProperty('--card-border', `rgba(${primaryRgb},0.45)`);
-  root.setProperty('--card-tint', `rgba(${primaryRgb},0.13)`);
+  // Alphas tuned separately per mode — the same overlay reads differently once it's
+  // blended with a light background instead of dark navy, so these aren't just carried
+  // over unchanged.
+  const glowAlpha1 = isLight ? 0.16 : 0.24;
+  const glowAlpha2 = isLight ? 0.22 : 0.32;
+  const borderAlpha = isLight ? 0.35 : 0.45;
+  const tintAlpha = isLight ? 0.07 : 0.13;
+  root.setProperty('--glow-1', `rgba(${primaryRgb},${glowAlpha1})`);
+  root.setProperty('--glow-2', `rgba(${hexToRgbString(secondaryHex)},${glowAlpha2})`);
+  root.setProperty('--card-border', `rgba(${primaryRgb},${borderAlpha})`);
+  root.setProperty('--card-tint', `rgba(${primaryRgb},${tintAlpha})`);
+  root.setProperty('--avatar-glow', `rgba(${hexToRgbString(accent)},0.45)`);
 }
 
 const SIGNS = [
@@ -2160,7 +2248,7 @@ function buildWheel(activeIndex, ballInfo){
   svg += `<circle cx="${cx}" cy="${cy}" r="${rInner-6}" fill="#0f0c22" stroke="#2c2555" stroke-width="1"/>`;
   // Real ball artwork in the wheel's center — the plain Poké Ball before Partner is
   // known (the page's initial state), then Partner's actual Apricorn ball once it is.
-  const ballR = (rInner-6) * 0.62;
+  const ballR = (rInner-6) * 0.82;
   svg += pokeballImageMarkup(cx, cy, ballR, ballInfo);
   wheelSvg.innerHTML = svg;
 }
@@ -2169,6 +2257,30 @@ function polar(cx,cy,r,angleDeg){
   return {x: cx + r*Math.cos(a), y: cy + r*Math.sin(a)};
 }
 buildWheel(-1);
+
+// --- Light/dark mode toggle ---
+// Works whether results exist yet or not. Before results, there's no personalized
+// theme to recompute — just the base palette swap via the .light-mode class. After
+// results, the personalized colors (derived from Sun/Moon avatars, computed by
+// applySignTheme) and the wheel's Pokéball both need recomputing too, since their
+// colors depend on the mode — window.__lastResults (set once results render) has
+// everything needed to redo that without asking the person to resubmit the form.
+function setMode(isLight){
+  document.documentElement.classList.toggle('light-mode', isLight);
+  document.getElementById('darkModeBtn').classList.toggle('active', !isLight);
+  document.getElementById('lightModeBtn').classList.toggle('active', isLight);
+  if (window.__lastResults){
+    const sunEntry = window.__lastResults.find(r => r.kicker === 'SUN');
+    const moonEntry = window.__lastResults.find(r => r.kicker === 'MOON');
+    const partnerEntry = window.__lastResults.find(r => r.kicker === 'PARTNER');
+    if (sunEntry && moonEntry){
+      applySignTheme(sunEntry.avatar, moonEntry.avatar);
+      buildWheel(SIGNS.indexOf(sunEntry.sign), partnerEntry ? ballForAvatar(partnerEntry.avatar) : null);
+    }
+  }
+}
+document.getElementById('darkModeBtn').addEventListener('click', () => setMode(false));
+document.getElementById('lightModeBtn').addEventListener('click', () => setMode(true));
 
 // --- Place search (Nominatim) ---
 // Purely additive: fills latitude/longitude/UTC-offset as a convenience, but never
@@ -2312,6 +2424,21 @@ buildWheel(-1);
   searchInput.addEventListener('input', function(){
     if (searchInput.value.trim() === '') resolvedTimezone = null;
   });
+
+  // The other half of that same fix: if someone overwrites latitude/longitude by hand
+  // after a search (without clearing the search box first), auto-sync used to keep
+  // recomputing the offset using the *previous* place's timezone against the *new*
+  // coordinates — silently wrong, not just inactive. Programmatic value assignment
+  // (used by selectPlace above) doesn't fire 'input' events, only real typing does, so
+  // this only triggers on genuine manual edits, never on the search's own autofill.
+  function clearAutoSyncOnManualEdit(){
+    if (resolvedTimezone !== null){
+      resolvedTimezone = null;
+      statusEl.textContent = 'Latitude/longitude edited manually — UTC offset auto-sync turned off. Enter it yourself, or search your birthplace again to re-enable it.';
+    }
+  }
+  document.getElementById('latitude').addEventListener('input', clearAutoSyncOnManualEdit);
+  document.getElementById('longitude').addEventListener('input', clearAutoSyncOnManualEdit);
 })();
 
 // --- Form handling ---
@@ -2325,6 +2452,13 @@ document.getElementById('submitBtn').addEventListener('click', function(){
   const userName = document.getElementById('userName').value;
   const errorEl = document.getElementById('formError');
   if(!dateVal || !timeVal || utcOffsetVal === '' || latVal === '' || lonVal === ''){
+    errorEl.textContent = 'Please fill in every field — Sun, Moon, and Rising all depend on the full birth date, time, timezone, and location.';
+    errorEl.style.display = 'block';
+    return;
+  }
+  const latNum = Number(latVal), lonNum = Number(lonVal);
+  if (latNum < -90 || latNum > 90 || lonNum < -180 || lonNum > 180){
+    errorEl.textContent = 'Latitude must be between -90 and 90, and longitude between -180 and 180 — double check the values entered.';
     errorEl.style.display = 'block';
     return;
   }
@@ -2755,6 +2889,17 @@ async function generateResultsCard(results){
   const themeCardTint = getComputedStyle(document.documentElement).getPropertyValue('--card-tint').trim() || 'rgba(255,255,255,0.045)';
   const themeGlow1 = getComputedStyle(document.documentElement).getPropertyValue('--glow-1').trim() || 'rgba(232,184,75,0.07)';
   const themeGlow2 = getComputedStyle(document.documentElement).getPropertyValue('--glow-2').trim() || 'rgba(120,90,220,0.15)';
+  const themeAvatarGlow = getComputedStyle(document.documentElement).getPropertyValue('--avatar-glow').trim() || 'rgba(232,184,75,0.45)';
+  // Canvas has no CSS var() support, so the base palette (unlike the theme colors
+  // above, which are already mode-aware via applySignTheme) needs its own light/dark
+  // resolution here — same light/dark check the page's own toggle drives.
+  const isLightCanvas = document.documentElement.classList.contains('light-mode');
+  const cvBg1 = isLightCanvas ? '#faf8ff' : '#1b1640';
+  const cvBg2 = isLightCanvas ? '#ece6f7' : '#0b0920';
+  const cvText = isLightCanvas ? '#211a3d' : '#f1eefc';
+  const cvMuted = isLightCanvas ? '#6b6285' : '#a099c4';
+  const cvFooter = isLightCanvas ? '#8a81a3' : '#605a86';
+  const cvFallbackBadgeBg = isLightCanvas ? '#efe9f7' : '#241d4a';
 
   try {
     await Promise.all([
@@ -2766,8 +2911,8 @@ async function generateResultsCard(results){
   } catch(e){ /* fall back to default fonts if webfonts aren't ready in time */ }
 
   const grad = ctx.createLinearGradient(0, 0, 0, H);
-  grad.addColorStop(0, '#1b1640');
-  grad.addColorStop(1, '#0b0920');
+  grad.addColorStop(0, cvBg1);
+  grad.addColorStop(1, cvBg2);
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, W, H);
 
@@ -2790,7 +2935,7 @@ async function generateResultsCard(results){
   ctx.fillStyle = themeGold;
   ctx.font = '700 52px Fraunces, serif';
   ctx.fillText('My Pokédex Astrology', W/2, 88);
-  ctx.fillStyle = '#a099c4';
+  ctx.fillStyle = cvMuted;
   ctx.font = '400 24px Inter, sans-serif';
   ctx.fillText('Sun · Moon · Rising · Mercury · Venus · Mars · Partner', W/2, 124);
 
@@ -2807,6 +2952,13 @@ async function generateResultsCard(results){
     const headlineMaxWidth = W - 220; // matches the ~110px side margin used elsewhere
     const headlineLines = wrapCanvasText(ctx, headline, headlineMaxWidth).slice(0, 2);
     headlineLines.forEach((line, i) => ctx.fillText(line, W/2, 168 + i*38));
+    // Small colored divider beneath the headline, matching the live page's treatment.
+    const dividerY = 168 + (headlineLines.length-1)*38 + 22;
+    ctx.fillStyle = themeGold;
+    ctx.globalAlpha = 0.55;
+    roundRectPath(ctx, W/2 - 28, dividerY, 56, 3, 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
   }
 
   // Two-tier load per avatar: primary source first, then alternateArtUrl (if this
@@ -2827,11 +2979,19 @@ async function generateResultsCard(results){
     ctx.fill();
 
     const imgBox = 140, imgX = padX + 26, imgY = rowTop + (rowH-imgBox)/2;
+    const glowCx = imgX + imgBox/2, glowCy = imgY + imgBox/2;
+    const avatarGlow = ctx.createRadialGradient(glowCx, glowCy, imgBox*0.2, glowCx, glowCy, imgBox*0.75);
+    avatarGlow.addColorStop(0, themeAvatarGlow);
+    avatarGlow.addColorStop(1, 'transparent');
+    ctx.fillStyle = avatarGlow;
+    ctx.beginPath();
+    ctx.arc(glowCx, glowCy, imgBox*0.75, 0, Math.PI*2);
+    ctx.fill();
     const img = images[i];
     if (img){
       ctx.drawImage(img, imgX, imgY, imgBox, imgBox);
     } else {
-      ctx.fillStyle = '#241d4a';
+      ctx.fillStyle = cvFallbackBadgeBg;
       ctx.beginPath();
       ctx.arc(imgX+imgBox/2, imgY+imgBox/2, imgBox/2, 0, Math.PI*2);
       ctx.fill();
@@ -2847,11 +3007,11 @@ async function generateResultsCard(results){
     ctx.font = '700 22px Inter, sans-serif';
     ctx.fillText(r.kicker, textX, rowTop + 44);
 
-    ctx.fillStyle = '#f1eefc';
+    ctx.fillStyle = cvText;
     ctx.font = '700 42px Fraunces, serif';
     ctx.fillText(r.avatar.name, textX, rowTop + 92);
 
-    ctx.fillStyle = '#a099c4';
+    ctx.fillStyle = cvMuted;
     ctx.font = '400 23px Inter, sans-serif';
     const signLine = r.house ? `${r.sign.symbol} ${r.sign.name} · House ${r.house}` : `${r.sign.symbol} ${r.sign.name}`;
     ctx.fillText(signLine, textX, rowTop + 126);
@@ -2883,7 +3043,7 @@ async function generateResultsCard(results){
   }
 
   ctx.textAlign = 'center';
-  ctx.fillStyle = '#605a86';
+  ctx.fillStyle = cvFooter;
   ctx.font = '400 20px Inter, sans-serif';
   ctx.fillText('pokédex astrology', W/2, H - 36);
 
@@ -2928,6 +3088,6 @@ function ordinalSuffix(n){
   return 'th';
 }
 </script>
-<div class="version-badge">v2.7</div>
+<div class="version-badge">v3.0</div>
 </body>
 </html>
