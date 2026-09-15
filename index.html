@@ -85,6 +85,20 @@
   .offset-row{display:flex; gap:8px;}
   .offset-row select{flex:0 0 68px;}
   .offset-row input{flex:1; min-width:0;}
+  .place-search-wrap{position:relative;}
+  .place-results{
+    position:absolute; top:calc(100% + 4px); left:0; right:0; z-index:20;
+    background:var(--bg-panel-2); border:1px solid var(--line); border-radius:9px;
+    max-height:220px; overflow-y:auto; display:none;
+  }
+  .place-results.show{display:block;}
+  .place-result-item{
+    padding:9px 12px; font-size:0.85rem; color:var(--text); cursor:pointer;
+    border-bottom:1px solid var(--line);
+  }
+  .place-result-item:last-child{border-bottom:none;}
+  .place-result-item:hover, .place-result-item.highlighted{background:var(--bg-panel);}
+  .place-search-status{font-size:0.72rem; color:var(--text-muted); min-height:1em;}
 
   button{
     background:var(--gold);
@@ -229,6 +243,13 @@
           <input type="number" id="utcoffset" step="0.5" min="0" max="14" placeholder="e.g. 5">
         </div>
         <small>Use the offset in effect on your birth date, not today's — daylight saving changes it. Most of the Americas are −; most of Europe, Africa, and Asia are +.</small>
+      </div>
+      <div class="field place-search-wrap">
+        <label for="placeSearch">Search for your birthplace (optional)</label>
+        <input type="text" id="placeSearch" autocomplete="off" placeholder="e.g. Paris, France">
+        <div id="placeResults" class="place-results"></div>
+        <div class="place-search-status" id="placeSearchStatus"></div>
+        <small>Fills in latitude, longitude, and a suggested UTC offset below from OpenStreetMap data — all three stay editable, so adjust or skip this and enter them yourself if you'd rather.</small>
       </div>
       <div class="field">
         <label for="latitude">Birth latitude</label>
@@ -597,6 +618,130 @@ const CHINESE_NEW_YEAR = {
   2032:[2,11], 2033:[1,31], 2034:[2,19], 2035:[2,8], 2036:[1,28], 2037:[2,15],
   2038:[2,4], 2039:[1,24], 2040:[2,12], 2041:[2,1], 2042:[1,22], 2043:[2,10]
 };
+// --- Location search (Nominatim place lookup -> lat/long -> suggested UTC offset) ---
+// Purely additive: the manual latitude/longitude/UTC-offset fields stay fully visible
+// and editable regardless — this only pre-fills them as a convenience.
+//
+// One representative IANA timezone per ISO 3166-1 alpha-2 country code, for the ~180
+// countries with (for this purpose) effectively one timezone. The handful of countries
+// genuinely spanning multiple zones (US, Canada, Russia, Australia, Brazil, Mexico,
+// Indonesia, Kazakhstan, DR Congo) are handled separately below via longitude, since a
+// single country-level guess would be wrong for a large share of their area/population.
+const COUNTRY_TIMEZONE = {
+  us:null, ca:null, ru:null, au:null, br:null, mx:null, id:null, kz:null, cd:null, // handled specially below
+  gb:'Europe/London', ie:'Europe/Dublin', fr:'Europe/Paris', de:'Europe/Berlin',
+  es:'Europe/Madrid', pt:'Europe/Lisbon', it:'Europe/Rome', nl:'Europe/Amsterdam',
+  be:'Europe/Brussels', ch:'Europe/Zurich', at:'Europe/Vienna', se:'Europe/Stockholm',
+  no:'Europe/Oslo', dk:'Europe/Copenhagen', fi:'Europe/Helsinki', pl:'Europe/Warsaw',
+  cz:'Europe/Prague', sk:'Europe/Bratislava', hu:'Europe/Budapest', ro:'Europe/Bucharest',
+  bg:'Europe/Sofia', gr:'Europe/Athens', hr:'Europe/Zagreb', si:'Europe/Ljubljana',
+  rs:'Europe/Belgrade', ba:'Europe/Sarajevo', mk:'Europe/Skopje', al:'Europe/Tirane',
+  me:'Europe/Podgorica', xk:'Europe/Belgrade', md:'Europe/Chisinau', ua:'Europe/Kyiv',
+  by:'Europe/Minsk', lt:'Europe/Vilnius', lv:'Europe/Riga', ee:'Europe/Tallinn',
+  is:'Atlantic/Reykjavik', lu:'Europe/Luxembourg', mt:'Europe/Malta', cy:'Asia/Nicosia',
+  tr:'Europe/Istanbul', il:'Asia/Jerusalem', ps:'Asia/Gaza', jo:'Asia/Amman',
+  lb:'Asia/Beirut', sy:'Asia/Damascus', iq:'Asia/Baghdad', ir:'Asia/Tehran',
+  sa:'Asia/Riyadh', ye:'Asia/Aden', om:'Asia/Muscat', ae:'Asia/Dubai', qa:'Asia/Qatar',
+  bh:'Asia/Bahrain', kw:'Asia/Kuwait', af:'Asia/Kabul', pk:'Asia/Karachi',
+  in:'Asia/Kolkata', np:'Asia/Kathmandu', bt:'Asia/Thimphu', bd:'Asia/Dhaka',
+  lk:'Asia/Colombo', mm:'Asia/Yangon', th:'Asia/Bangkok', la:'Asia/Vientiane',
+  kh:'Asia/Phnom_Penh', vn:'Asia/Ho_Chi_Minh', my:'Asia/Kuala_Lumpur', sg:'Asia/Singapore',
+  ph:'Asia/Manila', bn:'Asia/Brunei', cn:'Asia/Shanghai', hk:'Asia/Hong_Kong',
+  mo:'Asia/Macau', tw:'Asia/Taipei', jp:'Asia/Tokyo', kr:'Asia/Seoul', kp:'Asia/Pyongyang',
+  mn:'Asia/Ulaanbaatar', uz:'Asia/Tashkent', tm:'Asia/Ashgabat', tj:'Asia/Dushanbe',
+  kg:'Asia/Bishkek', ge:'Asia/Tbilisi', am:'Asia/Yerevan', az:'Asia/Baku',
+  eg:'Africa/Cairo', ly:'Africa/Tripoli', tn:'Africa/Tunis', dz:'Africa/Algiers',
+  ma:'Africa/Casablanca', sd:'Africa/Khartoum', ss:'Africa/Juba', et:'Africa/Addis_Ababa',
+  er:'Africa/Asmara', dj:'Africa/Djibouti', so:'Africa/Mogadishu', ke:'Africa/Nairobi',
+  tz:'Africa/Dar_es_Salaam', ug:'Africa/Kampala', rw:'Africa/Kigali', bi:'Africa/Bujumbura',
+  ng:'Africa/Lagos', gh:'Africa/Accra', ci:'Africa/Abidjan', sn:'Africa/Dakar',
+  ml:'Africa/Bamako', bf:'Africa/Ouagadougou', ne:'Africa/Niamey', td:'Africa/Ndjamena',
+  cm:'Africa/Douala', cf:'Africa/Bangui', ga:'Africa/Libreville', cg:'Africa/Brazzaville',
+  gq:'Africa/Malabo', ao:'Africa/Luanda', zm:'Africa/Lusaka', zw:'Africa/Harare',
+  mz:'Africa/Maputo', mw:'Africa/Blantyre', na:'Africa/Windhoek', bw:'Africa/Gaborone',
+  za:'Africa/Johannesburg', ls:'Africa/Maseru', sz:'Africa/Mbabane', mg:'Africa/Antananarivo',
+  mu:'Indian/Mauritius', sc:'Indian/Mahe', km:'Indian/Comoro', cv:'Atlantic/Cape_Verde',
+  gm:'Africa/Banjul', gn:'Africa/Conakry', gw:'Africa/Bissau', sl:'Africa/Freetown',
+  lr:'Africa/Monrovia', tg:'Africa/Lome', bj:'Africa/Porto-Novo', mr:'Africa/Nouakchott',
+  eh:'Africa/El_Aaiun', st:'Africa/Sao_Tome',
+  gl:'America/Nuuk',
+  cu:'America/Havana', jm:'America/Jamaica', ht:'America/Port-au-Prince',
+  do:'America/Santo_Domingo', bs:'America/Nassau', bz:'America/Belize',
+  gt:'America/Guatemala', hn:'America/Tegucigalpa', sv:'America/El_Salvador',
+  ni:'America/Managua', cr:'America/Costa_Rica', pa:'America/Panama',
+  co:'America/Bogota', ve:'America/Caracas', gy:'America/Guyana', sr:'America/Paramaribo',
+  ec:'America/Guayaquil', pe:'America/Lima', bo:'America/La_Paz', py:'America/Asuncion',
+  uy:'America/Montevideo', ar:'America/Argentina/Buenos_Aires', cl:'America/Santiago',
+  tt:'America/Port_of_Spain', bb:'America/Barbados', gd:'America/Grenada',
+  lc:'America/St_Lucia', vc:'America/St_Vincent', ag:'America/Antigua', dm:'America/Dominica',
+  kn:'America/St_Kitts', pr:'America/Puerto_Rico',
+  nz:'Pacific/Auckland', fj:'Pacific/Fiji', pg:'Pacific/Port_Moresby', sb:'Pacific/Guadalcanal',
+  vu:'Pacific/Efate', nc:'Pacific/Noumea', ws:'Pacific/Apia', to:'Pacific/Tongatapu',
+  ki:'Pacific/Tarawa', fm:'Pacific/Chuuk', mh:'Pacific/Majuro', pw:'Pacific/Palau',
+  nr:'Pacific/Nauru', tv:'Pacific/Funafuti',
+};
+// Longitude-bucketed rules for the 9 countries where one representative zone would be
+// wrong too often. Each rule's maxLon is the eastern edge of its band (checked in
+// order — first match wins), covering that country's real timezone boundaries closely
+// enough for this purpose, without embedding full geographic polygon data. The US
+// checks latitude first — Hawaii and Alaska overlap in raw longitude (both roughly
+// -130 to -178), so longitude alone can't tell them apart; Hawaii's latitude (~18-23°N)
+// is far enough south of Alaska's (~51-71°N) to disambiguate.
+const MULTI_ZONE_COUNTRY_RULES = {
+  us: [ {maxLon:-166,zone:'Pacific/Honolulu'}, {maxLon:-129,zone:'America/Anchorage'},
+        {maxLon:-114,zone:'America/Los_Angeles'}, {maxLon:-102,zone:'America/Denver'},
+        {maxLon:-87,zone:'America/Chicago'}, {maxLon:180,zone:'America/New_York'} ],
+  ca: [ {maxLon:-139,zone:'America/Whitehorse'}, {maxLon:-114,zone:'America/Vancouver'},
+        {maxLon:-102,zone:'America/Edmonton'}, {maxLon:-89,zone:'America/Winnipeg'},
+        {maxLon:-74,zone:'America/Toronto'}, {maxLon:-63,zone:'America/Halifax'},
+        {maxLon:180,zone:'America/St_Johns'} ],
+  ru: [ {maxLon:50,zone:'Europe/Moscow'}, {maxLon:60,zone:'Asia/Yekaterinburg'},
+        {maxLon:80,zone:'Asia/Omsk'}, {maxLon:96,zone:'Asia/Krasnoyarsk'},
+        {maxLon:112,zone:'Asia/Irkutsk'}, {maxLon:122,zone:'Asia/Yakutsk'},
+        {maxLon:142,zone:'Asia/Vladivostok'}, {maxLon:150,zone:'Asia/Magadan'},
+        {maxLon:180,zone:'Asia/Kamchatka'} ],
+  au: [ {maxLon:129,zone:'Australia/Perth'}, {maxLon:137,zone:'Australia/Darwin'},
+        {maxLon:180,zone:'Australia/Sydney'} ],
+  br: [ {maxLon:-66,zone:'America/Rio_Branco'}, {maxLon:-60,zone:'America/Manaus'},
+        {maxLon:0,zone:'America/Sao_Paulo'} ],
+  mx: [ {maxLon:-115,zone:'America/Tijuana'}, {maxLon:-109,zone:'America/Hermosillo'},
+        {maxLon:-105,zone:'America/Chihuahua'}, {maxLon:-86,zone:'America/Mexico_City'} ],
+  id: [ {maxLon:113,zone:'Asia/Jakarta'}, {maxLon:135,zone:'Asia/Makassar'},
+        {maxLon:180,zone:'Asia/Jayapura'} ],
+  kz: [ {maxLon:68,zone:'Asia/Almaty'}, {maxLon:180,zone:'Asia/Almaty'} ],
+  cd: [ {maxLon:22.5,zone:'Africa/Kinshasa'}, {maxLon:180,zone:'Africa/Lubumbashi'} ],
+};
+// Resolves a country code + latitude + longitude to an IANA timezone name — the
+// multi-zone rule table for the 9 large countries above, or the single-zone lookup for
+// everyone else. Returns null (never guesses) if the country code isn't recognized.
+function resolveTimezone(countryCode, latitude, longitude){
+  const cc = (countryCode || '').toLowerCase();
+  if (cc === 'us' && latitude < 30 && longitude < -150) return 'Pacific/Honolulu'; // Hawaii
+  if (MULTI_ZONE_COUNTRY_RULES[cc]){
+    const rules = MULTI_ZONE_COUNTRY_RULES[cc];
+    for (const rule of rules) if (longitude <= rule.maxLon) return rule.zone;
+    return rules[rules.length-1].zone;
+  }
+  return COUNTRY_TIMEZONE[cc] || null;
+}
+// Suggested UTC offset for a resolved IANA zone on a specific historical birth date —
+// uses the browser's own built-in timezone database (Intl), the same real historical
+// DST/offset-change data an OS clock relies on, so this is accurate, not a guess, once
+// the correct zone name is known. Returns null if the zone name isn't recognized by
+// the browser's Intl implementation, or the date fields aren't set yet.
+function suggestedUtcOffset(tzName, year, month, day, hour, minute){
+  try {
+    const approxUtcMs = Date.UTC(year, month-1, day, hour, minute);
+    const dtf = new Intl.DateTimeFormat('en-US', { timeZone: tzName, timeZoneName: 'longOffset' });
+    const parts = dtf.formatToParts(new Date(approxUtcMs));
+    const offsetPart = parts.find(p => p.type === 'timeZoneName').value;
+    const m = offsetPart.match(/GMT([+-])(\d{2}):(\d{2})/);
+    if (!m) return null;
+    const sign = m[1] === '-' ? -1 : 1;
+    return sign * (parseInt(m[2],10) + parseInt(m[3],10)/60);
+  } catch(e){ return null; }
+}
+
 // Each animal's loose type affinity (3 types, matching how each Western SIGNS entry
 // above also carries 3) plus each element's single type — used only for the Partner
 // pool weighting in buildPartnerPool.
@@ -1992,6 +2137,122 @@ function polar(cx,cy,r,angleDeg){
 }
 buildWheel(-1);
 
+// --- Place search (Nominatim) ---
+// Purely additive: fills latitude/longitude/UTC-offset as a convenience, but never
+// disables or hides those fields — manual entry always still works. Debounced so we
+// don't fire a request per keystroke (Nominatim's usage policy asks for max 1 req/sec,
+// and this comfortably stays under that for a single person typing).
+(function(){
+  const searchInput = document.getElementById('placeSearch');
+  const resultsEl = document.getElementById('placeResults');
+  const statusEl = document.getElementById('placeSearchStatus');
+  let debounceTimer = null;
+  let currentResults = [];
+  let highlightedIndex = -1;
+
+  function hideResults(){
+    resultsEl.classList.remove('show');
+    resultsEl.innerHTML = '';
+    currentResults = [];
+    highlightedIndex = -1;
+  }
+
+  function renderResults(places){
+    currentResults = places;
+    highlightedIndex = -1;
+    if (places.length === 0){
+      resultsEl.classList.remove('show');
+      resultsEl.innerHTML = '';
+      return;
+    }
+    resultsEl.innerHTML = places.map((p, i) =>
+      `<div class="place-result-item" data-index="${i}">${p.display_name}</div>`
+    ).join('');
+    resultsEl.classList.add('show');
+    resultsEl.querySelectorAll('.place-result-item').forEach(el => {
+      el.addEventListener('click', () => selectPlace(currentResults[Number(el.dataset.index)]));
+    });
+  }
+
+  function selectPlace(place){
+    const lat = Number(place.lat);
+    const lon = Number(place.lon);
+    document.getElementById('latitude').value = lat.toFixed(4);
+    document.getElementById('longitude').value = lon.toFixed(4);
+    searchInput.value = place.display_name;
+    hideResults();
+
+    // Suggest a UTC offset too, using whatever birth date/time is already filled in —
+    // skip silently if those aren't set yet or the country/timezone can't be resolved,
+    // leaving the offset fields exactly as they were for manual entry either way.
+    const countryCode = place.address && place.address.country_code;
+    const dateVal = document.getElementById('bdate').value;
+    const timeVal = document.getElementById('btime').value;
+    if (countryCode && dateVal && timeVal){
+      const tz = resolveTimezone(countryCode, lat, lon);
+      if (tz){
+        const [y,mo,d] = dateVal.split('-').map(Number);
+        const [hh,mi] = timeVal.split(':').map(Number);
+        const offset = suggestedUtcOffset(tz, y, mo, d, hh, mi);
+        if (offset !== null){
+          document.getElementById('utcoffsetSign').value = offset < 0 ? '-1' : '1';
+          document.getElementById('utcoffset').value = Math.abs(offset);
+          statusEl.textContent = `Suggested UTC offset for this date: ${offset < 0 ? '−' : '+'}${Math.abs(offset)} — adjust it above if needed.`;
+          return;
+        }
+      }
+    }
+    statusEl.textContent = 'Latitude/longitude filled in. Enter the UTC offset yourself — birth date/time or timezone weren\'t enough to suggest one.';
+  }
+
+  searchInput.addEventListener('input', function(){
+    const query = searchInput.value.trim();
+    clearTimeout(debounceTimer);
+    statusEl.textContent = '';
+    if (query.length < 3){ hideResults(); return; }
+    debounceTimer = setTimeout(async () => {
+      statusEl.textContent = 'Searching…';
+      try {
+        const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=6&q=${encodeURIComponent(query)}`;
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error('bad response');
+        const places = await resp.json();
+        statusEl.textContent = places.length === 0 ? 'No matches found — try a different spelling, or enter coordinates manually below.' : '';
+        renderResults(places);
+      } catch(e){
+        statusEl.textContent = 'Search unavailable right now — enter latitude/longitude manually below.';
+        hideResults();
+      }
+    }, 500);
+  });
+
+  searchInput.addEventListener('keydown', function(e){
+    if (!resultsEl.classList.contains('show')) return;
+    const items = resultsEl.querySelectorAll('.place-result-item');
+    if (e.key === 'ArrowDown'){
+      e.preventDefault();
+      highlightedIndex = Math.min(highlightedIndex + 1, items.length - 1);
+    } else if (e.key === 'ArrowUp'){
+      e.preventDefault();
+      highlightedIndex = Math.max(highlightedIndex - 1, 0);
+    } else if (e.key === 'Enter'){
+      e.preventDefault();
+      if (highlightedIndex >= 0) selectPlace(currentResults[highlightedIndex]);
+      return;
+    } else if (e.key === 'Escape'){
+      hideResults();
+      return;
+    } else {
+      return;
+    }
+    items.forEach((el, i) => el.classList.toggle('highlighted', i === highlightedIndex));
+  });
+
+  document.addEventListener('click', function(e){
+    if (!e.target.closest('.place-search-wrap')) hideResults();
+  });
+})();
+
 // --- Form handling ---
 document.getElementById('submitBtn').addEventListener('click', function(){
   const dateVal = document.getElementById('bdate').value;
@@ -2598,6 +2859,6 @@ function ordinalSuffix(n){
   return 'th';
 }
 </script>
-<div class="version-badge">v2.2</div>
+<div class="version-badge">v2.3</div>
 </body>
 </html>
