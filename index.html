@@ -1354,7 +1354,7 @@ const TYPE_POOLS = {
   Steel: [
     {dex:208, name:"Steelix", types:["Steel","Ground"], trait:"unbreakable resolve"},
     {dex:413, name:"Wormadam-Trash", types:["Bug","Steel"], slug:"wormadam-trash", trait:"adapted to its surroundings"},
-    {dex:206, name:"Forretress", types:["Bug","Steel"], trait:"defensive, closed off"},
+    {dex:205, name:"Forretress", types:["Bug","Steel"], trait:"defensive, closed off"},
     {dex:212, name:"Scizor", types:["Bug","Steel"], trait:"sharp, precise, protective"},
     {dex:227, name:"Skarmory", types:["Steel","Flying"], trait:"guarded, sharp-edged"},
     {dex:306, name:"Aggron", types:["Steel","Rock"], trait:"guarded, builds slowly and solidly"},
@@ -1504,7 +1504,7 @@ const TYPE_POOLS = {
     {dex:127, name:"Pinsir", types:["Bug"], trait:"powerful grip, refuses to let go"},
     {dex:166, name:"Ledian", types:["Bug","Flying"], trait:"hopeful, a little unlucky"},
     {dex:168, name:"Ariados", types:["Bug","Poison"], trait:"patient, weaves a trap and waits"},
-    {dex:206, name:"Forretress", types:["Bug","Steel"], trait:"defensive, closed off"},
+    {dex:205, name:"Forretress", types:["Bug","Steel"], trait:"defensive, closed off"},
     {dex:212, name:"Scizor", types:["Bug","Steel"], trait:"sharp, precise, protective"},
     {dex:213, name:"Shuckle", types:["Bug","Rock"], trait:"patient, quietly hoarding"},
     {dex:214, name:"Heracross", types:["Bug","Fighting"], trait:"powerful, competitive drive"},
@@ -2102,6 +2102,39 @@ function spriteUrlHome(avatar){
   if (avatar.slug) return `https://img.pokemondb.net/sprites/home/normal/${avatar.slug}.png`;
   return `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home/${avatar.dex}.png`;
 }
+// Fallback source for regional-form artwork specifically, tried only if pokemondb's
+// slug-based image fails to load — suspected (not confirmed; untestable from this
+// sandbox, no route to either host) to be a CORS gap: pokemondb works fine as a plain
+// <img> on the live page, but the downloadable card's canvas requires CORS permission
+// to avoid a "tainted canvas" error, and pokemondb may not grant it. Pokémon Showdown's
+// sprite CDN uses simple name-based slugs instead of pokemondb's — deliberately used
+// here over PokeAPI's numeric form-ID system (e.g. raichu-alola is internally 10093,
+// not dex 26) because a wrong *name* slug just 404s and falls through safely, where a
+// wrong *number* could silently point at a different real Pokémon's artwork — the same
+// class of bug this whole fallback exists to avoid. Pattern-derived from the existing
+// pokemondb slug, verified against one confirmed real example (raichu-alolan ->
+// raichu-alola); returns null for the handful of irregular slugs (Paldean Tauros
+// breeds, Wormadam-Trash, Oricorio, Darmanitan-Galar's "-standard" suffix) rather than
+// guessing at those, leaving them exactly as they behave today.
+function showdownSlugFrom(pokemondbSlug){
+  if (!pokemondbSlug) return null;
+  if (pokemondbSlug.endsWith('-alolan')) return pokemondbSlug.slice(0, -1);
+  if (pokemondbSlug.endsWith('-galarian')) return pokemondbSlug.replace(/-galarian$/, '-galar');
+  if (pokemondbSlug.endsWith('-hisuian')) return pokemondbSlug.replace(/-hisuian$/, '-hisui');
+  return null;
+}
+function alternateArtUrl(avatar){
+  const showdownSlug = showdownSlugFrom(avatar.slug);
+  return showdownSlug ? `https://play.pokemonshowdown.com/sprites/gen5/${showdownSlug}.png` : null;
+}
+// Builds the onerror attribute for an avatar <img> — tries alternateArtUrl (if this
+// avatar has one) before running finalJs, the same fallback each avatar already had.
+// Shared by both img tags below so the two-tier logic lives in one place.
+function imgFallbackOnError(avatar, finalJs){
+  const altUrl = alternateArtUrl(avatar);
+  if (!altUrl) return finalJs;
+  return `this.onerror=function(){${finalJs}};this.src='${altUrl}';`;
+}
 
 // --- Wheel ---
 const wheelSvg = document.getElementById('wheel');
@@ -2551,9 +2584,9 @@ function axisCard(kickerLabel, sign, avatar, house, crossedWith, options){
   const extraLine = options.extraContent ? `<div class="blurb">${options.extraContent}</div>` : '';
   return `
     <div class="card">
-      <div class="kicker">${kickerLabel} &middot; <span class="kicker-icon"><img src="${spriteUrl(avatar)}" alt="${sign.name}" onerror="this.style.display='none';this.nextElementSibling.style.display='inline';"><span class="kicker-symbol-fallback">${sign.symbol}</span></span> ${sign.name}${houseLine}</div>
+      <div class="kicker">${kickerLabel} &middot; <span class="kicker-icon"><img src="${spriteUrl(avatar)}" alt="${sign.name}" onerror="${imgFallbackOnError(avatar, "this.style.display='none';this.nextElementSibling.style.display='inline';")}"><span class="kicker-symbol-fallback">${sign.symbol}</span></span> ${sign.name}${houseLine}</div>
       <div class="sprite-row">
-        <img src="${spriteUrl(avatar)}" alt="${avatar.name}" onerror="this.style.display='none'">
+        <img src="${spriteUrl(avatar)}" alt="${avatar.name}" onerror="${imgFallbackOnError(avatar, "this.style.display='none'")}">
         <h3>${avatar.name}</h3>
         <div class="sprite-extra">
           <img src="${spriteUrlHome(avatar)}" alt="${avatar.name} (Home render)" title="Pokémon HOME render" onerror="this.style.display='none'">
@@ -2748,7 +2781,15 @@ async function generateResultsCard(results){
     headlineLines.forEach((line, i) => ctx.fillText(line, W/2, 168 + i*38));
   }
 
-  const images = await Promise.all(results.map(r => loadImageForCanvas(spriteUrl(r.avatar))));
+  // Two-tier load per avatar: primary source first, then alternateArtUrl (if this
+  // avatar has one) only if that fails — same fallback the live page's img tags use,
+  // just done in JS since canvas has no onerror-chain equivalent of its own.
+  const images = await Promise.all(results.map(async (r) => {
+    const primary = await loadImageForCanvas(spriteUrl(r.avatar));
+    if (primary) return primary;
+    const altUrl = alternateArtUrl(r.avatar);
+    return altUrl ? await loadImageForCanvas(altUrl) : null;
+  }));
 
   const top0 = 235, rowH = 205, rowGap = 14, padX = 56;
   results.forEach((r, i) => {
@@ -2859,6 +2900,6 @@ function ordinalSuffix(n){
   return 'th';
 }
 </script>
-<div class="version-badge">v2.3</div>
+<div class="version-badge">v2.5</div>
 </body>
 </html>
