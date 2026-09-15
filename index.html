@@ -691,15 +691,15 @@ const MULTI_ZONE_COUNTRY_RULES = {
   us: [ {maxLon:-166,zone:'Pacific/Honolulu'}, {maxLon:-129,zone:'America/Anchorage'},
         {maxLon:-114,zone:'America/Los_Angeles'}, {maxLon:-102,zone:'America/Denver'},
         {maxLon:-87,zone:'America/Chicago'}, {maxLon:180,zone:'America/New_York'} ],
-  ca: [ {maxLon:-139,zone:'America/Whitehorse'}, {maxLon:-114,zone:'America/Vancouver'},
-        {maxLon:-102,zone:'America/Edmonton'}, {maxLon:-89,zone:'America/Winnipeg'},
-        {maxLon:-74,zone:'America/Toronto'}, {maxLon:-63,zone:'America/Halifax'},
+  ca: [ {maxLon:-139,zone:'America/Whitehorse'}, {maxLon:-120,zone:'America/Vancouver'},
+        {maxLon:-102,zone:'America/Edmonton'}, {maxLon:-90,zone:'America/Winnipeg'},
+        {maxLon:-66,zone:'America/Toronto'}, {maxLon:-60,zone:'America/Halifax'},
         {maxLon:180,zone:'America/St_Johns'} ],
-  ru: [ {maxLon:50,zone:'Europe/Moscow'}, {maxLon:60,zone:'Asia/Yekaterinburg'},
-        {maxLon:80,zone:'Asia/Omsk'}, {maxLon:96,zone:'Asia/Krasnoyarsk'},
-        {maxLon:112,zone:'Asia/Irkutsk'}, {maxLon:122,zone:'Asia/Yakutsk'},
-        {maxLon:142,zone:'Asia/Vladivostok'}, {maxLon:150,zone:'Asia/Magadan'},
-        {maxLon:180,zone:'Asia/Kamchatka'} ],
+  ru: [ {maxLon:48,zone:'Europe/Moscow'}, {maxLon:53,zone:'Europe/Samara'},
+        {maxLon:70,zone:'Asia/Yekaterinburg'}, {maxLon:80,zone:'Asia/Omsk'},
+        {maxLon:96,zone:'Asia/Krasnoyarsk'}, {maxLon:112,zone:'Asia/Irkutsk'},
+        {maxLon:122,zone:'Asia/Yakutsk'}, {maxLon:142,zone:'Asia/Vladivostok'},
+        {maxLon:150,zone:'Asia/Magadan'}, {maxLon:180,zone:'Asia/Kamchatka'} ],
   au: [ {maxLon:129,zone:'Australia/Perth'}, {maxLon:137,zone:'Australia/Darwin'},
         {maxLon:180,zone:'Australia/Sydney'} ],
   br: [ {maxLon:-66,zone:'America/Rio_Branco'}, {maxLon:-60,zone:'America/Manaus'},
@@ -708,7 +708,7 @@ const MULTI_ZONE_COUNTRY_RULES = {
         {maxLon:-105,zone:'America/Chihuahua'}, {maxLon:-86,zone:'America/Mexico_City'} ],
   id: [ {maxLon:113,zone:'Asia/Jakarta'}, {maxLon:135,zone:'Asia/Makassar'},
         {maxLon:180,zone:'Asia/Jayapura'} ],
-  kz: [ {maxLon:68,zone:'Asia/Almaty'}, {maxLon:180,zone:'Asia/Almaty'} ],
+  kz: [ {maxLon:62,zone:'Asia/Aqtobe'}, {maxLon:180,zone:'Asia/Almaty'} ],
   cd: [ {maxLon:22.5,zone:'Africa/Kinshasa'}, {maxLon:180,zone:'Africa/Lubumbashi'} ],
 };
 // Resolves a country code + latitude + longitude to an IANA timezone name — the
@@ -2928,6 +2928,6 @@ function ordinalSuffix(n){
   return 'th';
 }
 </script>
-<div class="version-badge">v2.6</div>
+<div class="version-badge">v2.7</div>
 </body>
 </html>
